@@ -172,19 +172,26 @@ int main(int argc, char *argv[]) {
     }
     
     int   max_demod_in = horus_get_max_demod_in(hstates);
-    int   hsize = quadrature ? 2 : 1;
-    short demod_in[max_demod_in * hsize];
+    int   audiosize = sizeof(short) * (quadrature ? 2 : 1);
+    short demod_in[max_demod_in * (quadrature ? 2: 1)];
     int   max_ascii_out = horus_get_max_ascii_out_len(hstates);
     char  ascii_out[max_ascii_out];
     
     /* Main loop ----------------------------------------------------------------------- */
 
-    while(fread(demod_in, hsize * sizeof(short), horus_nin(hstates), fin) ==  horus_nin(hstates)) {
+    while(fread(demod_in, audiosize, horus_nin(hstates), fin) ==  horus_nin(hstates)) {
+        int result;
 
         if (verbose) {
             fprintf(stderr, "read nin %d\n", horus_nin(hstates));
         }
-        if (horus_rx(hstates, ascii_out, demod_in, quadrature)) {
+
+        if (quadrature)
+            result = horus_rx_comp(hstates, ascii_out, demod_in);
+        else
+            result = horus_rx(hstates, ascii_out, demod_in);
+
+        if (result) {
             fprintf(stdout, "%s", ascii_out);
             if (crc_results) {
                 if (horus_crc_ok(hstates)) {

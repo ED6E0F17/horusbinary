@@ -258,9 +258,9 @@ struct FSK * fsk_create_hbr(int Fs, int Rs,int P,int M, int tx_f1, int tx_fs)
     return fsk;
 }
 
-/* 4fsk Horus signal is only 850Hz wide, but allow 600Hz on either side for drift */
-#define HORUS_MIN 600
-#define HORUS_MAX 2700
+
+#define HORUS_MIN 800
+#define HORUS_MAX 2500
 #define HORUS_MIN_SPACING 100
 
 /*---------------------------------------------------------------------------*\
@@ -898,6 +898,7 @@ void fsk2_demod(struct FSK *fsk, uint8_t rx_bits[], float rx_sd[], COMP fsk_in[]
     /* Figure out how many samples are needed the next modem cycle */
     /* Unless we're in burst mode */
     if(!fsk->burst_mode){
+        /* Used to define HORUS_BINARY_MAX_NIN, change with caution */
         if(norm_rx_timing > 0.25)
             fsk->nin = N+Ts/2;
         else if(norm_rx_timing < -0.25)

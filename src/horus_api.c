@@ -39,6 +39,10 @@
 #define HORUS_API_VERSION                1    /* unique number that is bumped if API changes */
 #define HORUS_BINARY_NUM_BITS          360    /* fixed number of bytes in binary payload     */
 #define HORUS_BINARY_NUM_PAYLOAD_BYTES  22    /* fixed number of bytes in binary payload     */
+#define HORUS_BINARY_SAMPLERATE      48000    /* no reason to change this */
+#define HORUS_BINARY_SYMBOLRATE        100    /* may be changed for larger packet sizes */
+#define HORUS_BINARY_TS              (HORUS_BINARY_SAMPLERATE / HORUS_BINARY_SYMBOLRATE)
+#define HORUS_BINARY_NIN_MAX         (HORUS_BINARY_SAMPLERATE + HORUS_BINARY_TS * 2)
 
 struct horus {
     int         mode;
@@ -82,7 +86,10 @@ struct horus *horus_open (int mode) {
     struct horus *hstates = (struct horus *)malloc(sizeof(struct horus));
     assert(hstates != NULL);
 
-    hstates->Fs = 48000; hstates->Rs = 100; hstates->verbose = 0; hstates->mode = mode;
+    hstates->Fs = HORUS_BINARY_SAMPLERATE;
+    hstates->Rs = HORUS_BINARY_SYMBOLRATE;
+    hstates->verbose = 0;
+    hstates->mode = mode;
 
     if (mode == HORUS_MODE_RTTY) {
         hstates->mFSK = 2;
@@ -348,11 +355,35 @@ int extract_horus_binary(struct horus *hstates, char hex_out[], int uw_loc) {
     return hstates->crc_ok;
 }
 
+int horus_rx(struct horus *hstates, char ascii_out[], short demod_in[]) {
+    int i;
+    COMP demod_in_comp[HORUS_BINARY_NIN_MAX];
 
-int horus_rx(struct horus *hstates, char ascii_out[], short demod_in[], int quadrature) {
+    assert(hstates != NULL);
+
+    for (i=0; i<hstates->fsk->nin; i++) {
+        demod_in_comp[i].real = demod_in[i];
+        demod_in_comp[i].imag = 0;
+    }
+    return horus_demod_comp(hstates, ascii_out, demod_in_comp);
+}
+
+int horus_rx_comp(struct horus *hstates, char ascii_out[], short demod_in_iq[]) {
+    int i;
+    COMP demod_in_comp[HORUS_BINARY_NIN_MAX];
+
+    assert(hstates != NULL);
+
+    for (i=0; i<hstates->fsk->nin; i++) {
+        demod_in_comp[i].real = demod_in_iq[i * 2];     // cast shorts to floats
+        demod_in_comp[i].imag = demod_in_iq[i * 2 + 1]; //  range not normalised
+    }
+    return horus_demod_comp(hstates, ascii_out, demod_in_comp);
+}
+
+int horus_demod_comp(struct horus *hstates, char ascii_out[], COMP demod_in_comp[]) {
     int i, j, uw_loc, packet_detected;
     
-    assert(hstates != NULL);
     packet_detected = 0;
 
     int Nbits = hstates->fsk->Nbits;
@@ -368,28 +399,12 @@ int horus_rx(struct horus *hstates, char ascii_out[], short demod_in[], int quad
     for(i=0,j=Nbits; j<rx_bits_len; i++,j++) {
         hstates->rx_bits[i] = hstates->rx_bits[j];
     }
-                   
+
     /* demodulate latest bits */
 
-    /* Note: allocating this array as an automatic variable caused OSX to
-       "Bus Error 10" (segfault), so lets malloc() it. */
-    
-    COMP *demod_in_comp = (COMP*)malloc(sizeof(COMP)*hstates->fsk->nin);
-    
-    for (i=0; i<hstates->fsk->nin; i++) {
-	if (quadrature) {
-	    demod_in_comp[i].real = demod_in[i * 2];
-	    demod_in_comp[i].imag = demod_in[i * 2 + 1];
-	} else {
-	    demod_in_comp[i].real = demod_in[i];
-	    demod_in_comp[i].imag = 0;
-	}
-    }
     fsk_demod(hstates->fsk, &hstates->rx_bits[rx_bits_len-Nbits], demod_in_comp);
-    free(demod_in_comp);
-    
+
     /* UW search to see if we can find the start of a packet in the buffer */
-    
     if ((uw_loc = horus_find_uw(hstates, Nbits)) != -1) {
 
         if (hstates->verbose) {
@@ -439,8 +454,8 @@ int horus_get_mFSK(struct horus *hstates) {
 }
 
 int horus_get_max_demod_in(struct horus *hstates) {
-    /* copied from fsk_demod.c, a nicer fsk_max_nin function would be useful */
-    return sizeof(short)*(hstates->fsk->N + hstates->fsk->Ts*2);
+    /* sizeof(short) * (hstates->fsk->N + hstates->fsk->Ts*2) */
+    return HORUS_BINARY_NIN_MAX * sizeof(short);
 }
 
 int horus_get_max_ascii_out_len(struct horus *hstates) {
