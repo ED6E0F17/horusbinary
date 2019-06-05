@@ -79,8 +79,11 @@ int main(int argc, char *argv[]) {
                 if ((strcmp(optarg, "BINARY") == 0) || (strcmp(optarg, "binary") == 0)) {
                     mode = HORUS_MODE_BINARY;
                 }
+                if ((strcmp(optarg, "SSDV") == 0) || (strcmp(optarg, "ssdv") == 0)) {
+                    mode = HORUS_MODE_SSDV;
+                }
                 if (mode == -1) {
-                    fprintf(stderr, "use --mode RTTY or --mode binary\n");
+                    fprintf(stderr, "use -m RTTY or --m binary  or -m SSDV\n");
                     exit(1);
                 }
                 break;
@@ -122,8 +125,9 @@ int main(int argc, char *argv[]) {
         fprintf(stderr,"usage: %s -m RTTY|binary [-q] [-v] [-c] [-t [r]] InputModemRawFile OutputAsciiFile\n",argv[0]);
         fprintf(stderr,"\n");
         fprintf(stderr,"InputModemRawFile      48 kHz 16 bit shorts real modem signal from radio\n");
-        fprintf(stderr," -m RTTY|binary\n"); 
+        fprintf(stderr," -m RTTY|binary|SSDV\n");
         fprintf(stderr,"--mode=RTTY|binary     RTTY or binary Horus protcols\n");
+        fprintf(stderr,"--mode=SSDV            High speed binary Horus protcol\n");
         fprintf(stderr," -t[r] --stats=[r]     Print out modem statistics to stderr in JSON.\n");
         fprintf(stderr,"                       r, if provided, sets the number of modem frames\n"
                        "                       between statistic printouts\n");

@@ -259,8 +259,8 @@ struct FSK * fsk_create_hbr(int Fs, int Rs,int P,int M, int tx_f1, int tx_fs)
 }
 
 
-#define HORUS_MIN 800
-#define HORUS_MAX 2500
+#define HORUS_MIN  600
+#define HORUS_MAX 2700
 #define HORUS_MIN_SPACING 100
 
 /*---------------------------------------------------------------------------*\
