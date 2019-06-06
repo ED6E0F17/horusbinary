@@ -39,7 +39,9 @@
 #define HORUS_API_VERSION                1    /* unique number that is bumped if API changes */
 #define HORUS_BINARY_NUM_BITS          360    /* fixed number of bytes in binary payload     */
 #define HORUS_BINARY_NUM_PAYLOAD_BYTES  22    /* fixed number of bytes in binary payload     */
-#define HORUS_SSDV_NUM_PAYLOAD_BYTES    22    /* TODO */
+#define HORUS_BINARY_LONG_PAYLOAD_BYTES 32    /* extended binary payload */
+#define HORUS_MAX_PAYLOAD_BYTES        255    /* image data or other long packet*/
+#define HORUS_SSDV_NUM_BITS           4000    /* image data (2 second Tx at 1000 baud 4fsk) */
 #define HORUS_BINARY_SAMPLERATE      48000    /* no reason to change this */
 #define HORUS_BINARY_SYMBOLRATE        100    /* may be changed for larger packet sizes */
 #define HORUS_SSDV_SYMBOLRATE         1000
@@ -76,12 +78,22 @@ int8_t uw_horus_rtty[] = {
   0,0,1,0,0,1,0,1,1,0
 };
 
-/* Unique word for Horus Binary */
+/* Unique word for Horus Binary ($$) */
 
 int8_t uw_horus_binary[] = {
     0,0,1,0,0,1,0,0,
     0,0,1,0,0,1,0,0 
 };
+
+/* Longer unique word for Horus SSDV (-$-) */
+
+int8_t uw_horus_ssdv[] = {
+    0,0,1,0,1,1,0,1,
+    0,0,1,0,0,1,0,0,
+    0,0,1,0,1,1,0,1
+};
+
+
 
 struct horus *horus_open (int mode) {
     int i;
@@ -126,12 +138,12 @@ struct horus *horus_open (int mode) {
 
     if (mode == HORUS_MODE_SSDV) {
         hstates->mFSK = 4;
-        hstates->max_packet_len = HORUS_BINARY_NUM_BITS; /* TODO */
-        for (i=0; i<sizeof(uw_horus_binary); i++) {
-            hstates->uw[i] = 2*uw_horus_binary[i] - 1;
+        hstates->max_packet_len = HORUS_SSDV_NUM_BITS;
+        for (i=0; i<sizeof(uw_horus_ssdv); i++) {
+            hstates->uw[i] = 2*uw_horus_ssdv[i] - 1;
         }
-        hstates->uw_len = sizeof(uw_horus_binary);
-        hstates->uw_thresh = sizeof(uw_horus_binary) - 2; /* allow a few bit errors in UW detection */
+        hstates->uw_len = sizeof(uw_horus_ssdv);
+        hstates->uw_thresh = sizeof(uw_horus_ssdv) - 3; /* allow a few bit errors in UW detection */
         horus_l2_init();
         hstates->rx_bits_len = hstates->max_packet_len;
     }
@@ -305,7 +317,7 @@ int extract_horus_rtty(struct horus *hstates, char ascii_out[], int uw_loc) {
 }
 
 
-int extract_horus_binary(struct horus *hstates, char hex_out[], int uw_loc) {
+int extract_horus_binary(struct horus *hstates, char hex_out[], int uw_loc, int payload_size) {
     const int nfield = 8;                      /* 8 bit binary                   */
     int st = uw_loc;                           /* first bit of first char        */
     int en = uw_loc + hstates->max_packet_len; /* last bit of max length packet  */
@@ -343,23 +355,34 @@ int extract_horus_binary(struct horus *hstates, char hex_out[], int uw_loc) {
         fprintf(stderr, "\n");
     }
     
-    uint8_t payload_bytes[HORUS_BINARY_NUM_PAYLOAD_BYTES];
-    horus_l2_decode_rx_packet(payload_bytes, rxpacket, HORUS_BINARY_NUM_PAYLOAD_BYTES);
+    uint8_t payload_bytes[HORUS_MAX_PAYLOAD_BYTES];
+    horus_l2_decode_rx_packet(payload_bytes, rxpacket, payload_size);
 
-    uint16_t crc_tx, crc_rx;
-    crc_rx = horus_l2_gen_crc16(payload_bytes, HORUS_BINARY_NUM_PAYLOAD_BYTES-2);
-    crc_tx = (uint16_t)payload_bytes[HORUS_BINARY_NUM_PAYLOAD_BYTES-2] +
-        ((uint16_t)payload_bytes[HORUS_BINARY_NUM_PAYLOAD_BYTES-1]<<8);
-    
-    if (hstates->verbose) {
-        fprintf(stderr, "  extract_horus_binary crc_tx: %04X crc_rx: %04X\n", crc_tx, crc_rx);
+    if (payload_size == HORUS_BINARY_NUM_PAYLOAD_BYTES) {
+        uint16_t crc_tx, crc_rx;
+        crc_rx = horus_l2_gen_crc16(payload_bytes, HORUS_BINARY_NUM_PAYLOAD_BYTES-2);
+        crc_tx = (uint16_t)payload_bytes[HORUS_BINARY_NUM_PAYLOAD_BYTES-2] +
+                ((uint16_t)payload_bytes[HORUS_BINARY_NUM_PAYLOAD_BYTES-1]<<8);
+        hstates->crc_ok = (crc_tx == crc_rx);
+
+        if (hstates->verbose) {
+            fprintf(stderr, "  extract_horus_binary crc_tx: %04X crc_rx: %04X\n", crc_tx, crc_rx);
+        }
+    } else {
+        uint32_t crc_tx, crc_rx;
+        crc_rx = horus_l2_gen_crc32(payload_bytes, payload_size-4);
+        crc_tx = (uint32_t)payload_bytes[payload_size-4] +
+                ((uint32_t)payload_bytes[payload_size-3]<<8) +
+                ((uint32_t)payload_bytes[payload_size-2]<<16) +
+                ((uint32_t)payload_bytes[payload_size-1]<<24);
+        hstates->crc_ok = (crc_tx == crc_rx);
     }
-    
+
     /* convert to ASCII string of hex characters */
 
     hex_out[0] = 0;
     char hex[3];
-    for (b=0; b<HORUS_BINARY_NUM_PAYLOAD_BYTES; b++) {
+    for (b=0; b<payload_size; b++) {
         sprintf(hex, "%02X", payload_bytes[b]);
         strcat(hex_out, hex);
     }
@@ -371,9 +394,8 @@ int extract_horus_binary(struct horus *hstates, char hex_out[], int uw_loc) {
     /* With noise input to FSK demod we can get occasinal UW matches,
        so a good idea to only pass on any packets that pass CRC */
     
-    hstates->crc_ok = (crc_tx == crc_rx);
     if ( hstates->crc_ok) {
-        hstates->total_payload_bits += HORUS_BINARY_NUM_PAYLOAD_BYTES;
+        hstates->total_payload_bits += payload_size;
     }
     return hstates->crc_ok;
 }
@@ -441,7 +463,7 @@ int horus_demod_comp(struct horus *hstates, char ascii_out[], COMP demod_in_comp
             packet_detected = extract_horus_rtty(hstates, ascii_out, uw_loc);
         }
         if (hstates->mode == HORUS_MODE_BINARY) {
-            packet_detected = extract_horus_binary(hstates, ascii_out, uw_loc);
+            packet_detected = extract_horus_binary(hstates, ascii_out, uw_loc, HORUS_BINARY_NUM_PAYLOAD_BYTES);
             //#define DUMP_BINARY_PACKET
             #ifdef DUMP_BINARY_PACKET
             FILE *f = fopen("packetbits.txt", "wt"); assert(f != NULL);
@@ -452,10 +474,12 @@ int horus_demod_comp(struct horus *hstates, char ascii_out[], COMP demod_in_comp
             exit(0);
             #endif
         }
-	/* TODO - check for shorter binary packet first, then for longer image packet */
+	/* Check for shorter binary packet first, then for longer image packet */
         if (hstates->mode == HORUS_MODE_SSDV) {
-            packet_detected = extract_horus_binary(hstates, ascii_out, uw_loc);
-        }
+            packet_detected = extract_horus_binary(hstates, ascii_out, uw_loc, HORUS_BINARY_LONG_PAYLOAD_BYTES);
+            if (!packet_detected)
+                packet_detected = extract_horus_binary(hstates, ascii_out, uw_loc, HORUS_MAX_PAYLOAD_BYTES);
+	}
     }
      
     return packet_detected;
@@ -491,10 +515,10 @@ int horus_get_max_ascii_out_len(struct horus *hstates) {
         return hstates->max_packet_len/10;     /* 7 bit ASCII, plus 3 sync bits */
     }
     if (hstates->mode == HORUS_MODE_BINARY) {
-        return HORUS_BINARY_NUM_PAYLOAD_BYTES;
+        return 2*HORUS_BINARY_NUM_PAYLOAD_BYTES+1; /* HEX DUMP */
     }
     if (hstates->mode == HORUS_MODE_SSDV) {
-        return HORUS_SSDV_NUM_PAYLOAD_BYTES;
+        return 2*HORUS_MAX_PAYLOAD_BYTES+1; /* HEX DUMP */
     }
     assert(0); /* should never get here */
     return 0;

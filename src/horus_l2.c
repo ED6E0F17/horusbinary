@@ -466,17 +466,6 @@ void horus_l2_decode_rx_packet(unsigned char *output_payload_data,
 #endif
 
 #ifdef INTERLEAVER
-
-uint16_t primes[] = {
-    2,      3,      5,      7,      11,     13,     17,     19,     23,     29, 
-    31,     37,     41,     43,     47,     53,     59,     61,     67,     71, 
-    73,     79,     83,     89,     97,     101,    103,    107,    109,    113, 
-    127,    131,    137,    139,    149,    151,    157,    163,    167,    173, 
-    179,    181,    191,    193,    197,    199,    211,    223,    227,    229, 
-    233,    239,    241,    251,    257,    263,    269,    271,    277,    281, 
-    283,    293,    307,    311,    313,    317,    331,    337,    347
-};
-
 void interleave(unsigned char *inout, int nbytes, int dir)
 {
     /* note: to work on small uCs (e.g. AVR) needed to declare specific words sizes */
@@ -486,15 +475,7 @@ void interleave(unsigned char *inout, int nbytes, int dir)
     unsigned char out[nbytes];
 
     memset(out, 0, nbytes);
-           
-    /* b chosen to be co-prime with nbits, I'm cheating by just finding the 
-       nearest prime to nbits.  It also uses storage, is run on every call,
-       and has an upper limit.  Oh Well, still seems to interleave OK. */
-    i = 1;
-    uint16_t imax = sizeof(primes)/sizeof(uint16_t);
-    while ((primes[i] < nbits) && (i < imax))
-        i++;
-    b = primes[i-1];
+    b = 337; /* Largest Prime number less than nbits for a 22 byte packet */
 
     for(n=0; n<nbits; n++) {
 
@@ -889,5 +870,26 @@ unsigned short horus_l2_gen_crc16(unsigned char* data_p, unsigned char length) {
         crc = (crc << 8) ^ ((unsigned short)(x << 12)) ^ ((unsigned short)(x <<5)) ^ ((unsigned short)x);
     }
     return crc;
+}
+
+// from SSDV source code
+
+uint32_t horus_l2_gen_crc32(unsigned char *data, unsigned char length)
+{
+	uint32_t crc, x;
+	uint8_t i, *d;
+
+	for(d = data, crc = 0xFFFFFFFF; length; length--)
+	{
+		x = (crc ^ *(d++)) & 0xFF;
+		for(i = 8; i > 0; i--)
+		{
+			if(x & 1) x = (x >> 1) ^ 0xEDB88320;
+			else x >>= 1;
+		}
+		crc = (crc >> 8) ^ x;
+	}
+
+	return(crc ^ 0xFFFFFFFF);
 }
 

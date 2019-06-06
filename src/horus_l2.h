@@ -27,4 +27,6 @@ void horus_l2_decode_rx_packet(unsigned char *output_payload_data,
 
 unsigned short horus_l2_gen_crc16(unsigned char* data_p, unsigned char length);
 
+uint32_t horus_l2_gen_crc32(unsigned char *data, unsigned char length);
+
 #endif
