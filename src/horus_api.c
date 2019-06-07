@@ -356,10 +356,9 @@ int extract_horus_binary(struct horus *hstates, char hex_out[], int uw_loc, int 
     }
     
     uint8_t payload_bytes[HORUS_MAX_PAYLOAD_BYTES];
-    horus_l2_decode_rx_packet(payload_bytes, rxpacket, payload_size);
-
     if (payload_size == HORUS_BINARY_NUM_PAYLOAD_BYTES) {
         uint16_t crc_tx, crc_rx;
+        horus_l2_decode_rx_packet(payload_bytes, rxpacket, payload_size);
         crc_rx = horus_l2_gen_crc16(payload_bytes, HORUS_BINARY_NUM_PAYLOAD_BYTES-2);
         crc_tx = (uint16_t)payload_bytes[HORUS_BINARY_NUM_PAYLOAD_BYTES-2] +
                 ((uint16_t)payload_bytes[HORUS_BINARY_NUM_PAYLOAD_BYTES-1]<<8);
@@ -370,12 +369,18 @@ int extract_horus_binary(struct horus *hstates, char hex_out[], int uw_loc, int 
         }
     } else {
         uint32_t crc_tx, crc_rx;
+        /*		 horus_l2.c has fixed unique word length of 2, SSDV mode uses 3 */
+        horus_l2_decode_rx_packet(payload_bytes, &rxpacket[ 1 ], payload_size);
         crc_rx = horus_l2_gen_crc32(payload_bytes, payload_size-4);
-        crc_tx = (uint32_t)payload_bytes[payload_size-4] +
-                ((uint32_t)payload_bytes[payload_size-3]<<8) +
-                ((uint32_t)payload_bytes[payload_size-2]<<16) +
-                ((uint32_t)payload_bytes[payload_size-1]<<24);
+	/* SSDV compatible checksum is MSB */
+        crc_tx = (uint32_t)payload_bytes[payload_size-1] +
+                ((uint32_t)payload_bytes[payload_size-2]<<8) +
+                ((uint32_t)payload_bytes[payload_size-3]<<16) +
+                ((uint32_t)payload_bytes[payload_size-4]<<24);
         hstates->crc_ok = (crc_tx == crc_rx);
+        if (hstates->verbose) {
+            fprintf(stderr, "  extract_horus_binary crc_tx: %08X crc_rx: %08X\n", crc_tx, crc_rx);
+	}
     }
 
     /* convert to ASCII string of hex characters */
@@ -388,7 +393,7 @@ int extract_horus_binary(struct horus *hstates, char hex_out[], int uw_loc, int 
     }
    
     if (hstates->verbose) {
-        fprintf(stderr, "  nout: %d Decoded Payload bytes:\n  %s", nout, hex_out);
+        fprintf(stderr, "  nout: %d Decoded Payload bytes:\n  %s\n", payload_size, hex_out);
     }
 
     /* With noise input to FSK demod we can get occasinal UW matches,
