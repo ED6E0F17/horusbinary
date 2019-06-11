@@ -1,0 +1,7 @@
+tracker=Hx17
+EnableHabitat=N
+EnableSSDV=N
+Latitude=51.06
+Longitude=-4.12
+Altitude=69
+mode=1
