@@ -79,9 +79,7 @@ int horus_loop( uint8_t *packet  ) {
 		if ( result ) {
 			ascii_out[max_ascii_out - 1] = 0; // make sure it`s a string
 			int len = unpack_hexdump(ascii_out, packet);
-			if (len == 32)
-				len = 22; // TODO: crop to legacy packet
-			return len;
+			return len; // Sanity check size against checksum ?
 		}
 	}
 	return 0;
@@ -158,7 +156,6 @@ if ( enable_stats && stats_ctr <= 0 ) {
 
 
 const char *Modes[3] = {"Slow", "SSDV", "RTTY"};
-#define MODE_FSK ( 6 )
 
 struct TConfig Config;
 struct TPayload Payloads[PAYLOAD_COUNT];
@@ -168,20 +165,16 @@ void LogMessage( const char *format, ... ) {
 	char Buffer[200];
 
 	if ( Window == NULL ) {
-		// Window = newwin(25, 30, 0, 50);
 		Window = newwin( 12, 99, 14, 0 );
 		scrollok( Window, TRUE );
 	}
 
 	va_list args;
 	va_start( args, format );
-
 	vsnprintf( Buffer, 159, format, args );
-
 	va_end( args );
 
 	waddstr( Window, Buffer );
-
 	wrefresh( Window );
 }
 
@@ -190,24 +183,29 @@ void ChannelPrintf( int row, int column, const char *format, ... ) {
 
 	va_list args;
 	va_start( args, format );
-
 	vsnprintf( Buffer, 40, format, args );
-
 	va_end( args );
 
 	mvwaddstr( Config.Window, row, column, Buffer );
-
-	wrefresh( Config.Window ); // TODO: call once
 }
 
-static char *decode_callsign( char *callsign, uint32_t code ) {
+void ChannelRefresh(void) {
+	wrefresh( Config.Window );
+}
+
+void decode_callsign( char *callsign, uint8_t *codeptr ) {
 	char *c, s;
+	uint32_t code;
 
 	*callsign = '\0';
+	code = codeptr[0]  << 24;
+	code |= codeptr[1] << 16;
+	code |= codeptr[2] <<  8;
+	code |= codeptr[3];
 
 	/* Is callsign valid? */
 	if ( code > 0xF423FFFF ) {
-		return( callsign );
+		code = 13 * 41; // "--"
 	}
 
 	for ( c = callsign; code; c++ )
@@ -224,7 +222,7 @@ static char *decode_callsign( char *callsign, uint32_t code ) {
 	}
 	*c = '\0';
 
-	return( callsign );
+	return;
 }
 
 void ConvertStringToHex( char *Target, char *Source, int Length ) {
@@ -540,7 +538,7 @@ void getPacket() {
 
 int main( int argc, char **argv ) {
 	uint8_t Bytes;
-	uint32_t CallsignCode, LoopCount;
+	uint32_t LoopCount;
 	WINDOW * mainwin;
 
 	curlInit();
@@ -552,6 +550,7 @@ int main( int argc, char **argv ) {
 
 	LoadConfigFile();
 	LoadPayloadFiles();
+	LogMessage( " * Press Control-C to quit *\n" );
 
 	// TODO: check config for Mode
 	if (!horus_init(0))
@@ -563,15 +562,17 @@ int main( int argc, char **argv ) {
 		Bytes = Message[0];
 		Message[0] = 0;
 		if ( Bytes > 0 ) {
-			if ( (char)0x67 != Message[1] ) {
-				// Binary telemetry packet
+			if ( Message[1] <= 32 ) {						/* Binary telemetry packet */
 				struct TBinaryPacket BinaryPacket;
 				char Data[100], Sentence[100];
 
 				ChannelPrintf( 3, 1, "Binary Telemetry              " );
 				memcpy( &BinaryPacket, &Message[1], sizeof( BinaryPacket ) );	
 
-				strcpy( Config.Payload, Payloads[0x1f & BinaryPacket.PayloadID].Payload );
+				decode_callsign( Config.Payload, (uint8_t *)&BinaryPacket.NameID );
+				// TODO: legacy callsign
+				// strcpy( Config.Payload, Payloads[0x1f & BinaryPacket.PayloadID] );
+
 				Config.Seconds = BinaryPacket.Hours * 3600 +
 								 BinaryPacket.Minutes * 60 +
 								 BinaryPacket.Seconds;
@@ -585,9 +586,10 @@ int main( int argc, char **argv ) {
 #endif
 				Config.Altitude = BinaryPacket.Altitude;
 
-				if ( BinaryPacket.Checksum == CRC16( (char *)&Message[1], sizeof( BinaryPacket ) - 2 ) ) {
+				// if ( BinaryPacket.Checksum == CRC16( (char *)&Message[1], sizeof( BinaryPacket ) - 2 ) ) {
+				{ // - Assume that checksum was confirmed by demod stage (?)
 					sprintf( Data, "%s,%u,%02u:%02u:%02u,%1.5f,%1.5f,%u,%u,%u,%d,%1.2f",
-							 Payloads[0x1f & BinaryPacket.PayloadID].Payload,
+							 Config.Payload,
 							 BinaryPacket.Counter,
 							 BinaryPacket.Hours,
 							 BinaryPacket.Minutes,
@@ -599,7 +601,9 @@ int main( int argc, char **argv ) {
 							 BinaryPacket.Sats,
 							 BinaryPacket.Temp,
 							 5.0f / 255.0f * (float)BinaryPacket.BattVoltage );
-					sprintf( Sentence, "$$%s*%04X\n", Data, CRC16( Data, strlen( Data ) ) );
+					if (Message[1] == 32)	// Extended Packet
+						sprintf(Data + strlen(Data), ",%d,%d", BinaryPacket.User1, BinaryPacket.User2);
+					snprintf( Sentence, 100, "$$%s*%04X\n", Data, CRC16( Data, strlen( Data ) ) );
 
 					UploadTelemetryPacket( Sentence );
 					DoPositionCalcs();
@@ -614,20 +618,11 @@ int main( int argc, char **argv ) {
 #endif
 					UpdatePayloadLOG( Sentence );
 					LogMessage( "%s", Sentence );
-
-				} else {
-					Config.BadCRCCount++;
 				}
-			} else if ( Bytes > 250 ) {
-				// SSDV packet
+			} else if ( (Bytes == 255) && (Message[1] == 0x67) ) {					/* SSDV packet */
 				char Callsign[8];
 
-				CallsignCode = Message[2]; CallsignCode <<= 8;
-				CallsignCode |= Message[3]; CallsignCode <<= 8;
-				CallsignCode |= Message[4]; CallsignCode <<= 8;
-				CallsignCode |= Message[5];
-
-				decode_callsign( Callsign, CallsignCode );
+				decode_callsign( Callsign, &Message[2] );
 				Callsign[7] = 0;
 
 				// ImageNumber = Message[6];
@@ -678,6 +673,7 @@ int main( int argc, char **argv ) {
 			UploadMultiImages();
 			ChannelPrintf( 4, 1, "Uploads: %4d", curlUploads() );
 		}
+		ChannelRefresh();	// redraw ncurses display
 		usleep( 300 * 1000 );   // short delay in case reading from file
 		getPacket();
 	}

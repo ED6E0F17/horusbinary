@@ -3,7 +3,7 @@ CC=gcc
 CFLAGS= -O3 -Wall
 CFLAGS+= -DHORUS_L2_RX -DINTERLEAVER -DSCRAMBLER -DRUN_TIME_TABLES
 
-all: horus_demod horus_gateway
+all: clean horus_demod horus_gateway
 
 horus_demod: horus_demod.o horus_api.o horus_l2.o golay23.o fsk.o kiss_fft.o
 	g++  -lm -o horus_demod horus_demod.o horus_api.o horus_l2.o golay23.o fsk.o kiss_fft.o

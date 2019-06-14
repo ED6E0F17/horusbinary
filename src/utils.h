@@ -17,5 +17,3 @@ void sha256_transform( SHA256_CTX *ctx, uint8_t *data );
 void sha256_update( SHA256_CTX *ctx, uint8_t *data, uint32_t len );
 void sha256_final( SHA256_CTX *ctx, uint8_t *hash );
 
-#define LOG_TELEM    ( 1 << 0 )
-#define LOG_RADIO    ( 1 << 2 )
