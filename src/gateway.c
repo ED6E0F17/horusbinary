@@ -19,8 +19,8 @@
 
 struct TConfig Config;
 struct TPayload Payloads[PAYLOAD_COUNT];
-struct   horus *hstates;
-int audio_input_iq = 0;
+struct horus *hstates;
+int audioIQ = 0;
 int max_demod_in = 0;
 
 /* It would be possible to run a single input through the decoder at two speeds */
@@ -55,8 +55,8 @@ int unpack_hexdump(char src[], uint8_t dest[]) {
 }
 
 int horus_loop( uint8_t *packet ) {
-	int audiosize = sizeof( short ) * ( audio_input_iq ? 2 : 1 );
-	short demod_in[max_demod_in * ( audio_input_iq ? 2 : 1 )];
+	int audiosize = sizeof( short ) * ( audioIQ ? 2 : 1 );
+	short demod_in[max_demod_in * ( audioIQ ? 2 : 1 )];
 	int max_ascii_out = horus_get_max_ascii_out_len( hstates ) | 1; // make sure it is an odd length
 	char ascii_out[max_ascii_out];
 	int len = 0;
@@ -64,7 +64,7 @@ int horus_loop( uint8_t *packet ) {
 	if ( fread( demod_in, audiosize, horus_nin( hstates ), stdin ) ==  horus_nin( hstates ) ) {
 		int result;
 
-		if ( audio_input_iq ) {
+		if ( audioIQ ) {
 			result = horus_rx_comp( hstates, ascii_out, demod_in );
 		} else {
 			result = horus_rx( hstates, ascii_out, demod_in );
@@ -82,7 +82,7 @@ int horus_loop( uint8_t *packet ) {
 
 	horus_get_modem_extended_stats( hstates, &stats );
 
-	Config.freq = (int)stats.foff;
+	Config.freq = (int)(-0.1 * stats.foff) * 10;
 	Config.snr = (int)stats.snr_est;
         Config.ppm = (int)stats.clock_offset;
 	f1 = (uint8_t)(stats.f_est[0] / 37.0) - 25; // convert 5 KHz to 160 range
@@ -483,7 +483,7 @@ uint8_t Message[258];
 int getPacket() {
 	int result;
 	result = horus_loop( &Message[1] );
-	if (result < 0)
+	if (result < 0) // EOF
 		return 0;
 	Message[0] = (uint8_t)result;
 	return 1;
@@ -494,20 +494,38 @@ int main( int argc, char **argv ) {
 	uint32_t LoopCount;
 	WINDOW * mainwin;
 
-	curlInit();
-	mainwin = InitDisplay();
-	LogMessage( "**** Based on LoRa Gateway by daveake ****\n" );
+	int o = getopt(argc,argv,"hq");
+	switch(o) {
+	case -1:
+		break;
+	case 'q':
+		audioIQ = 1;
+		break;
+	default:
+	case 'h':
+		fprintf(stderr, "Horus Binary Gateway based on LoRa version.\n");
+		fprintf(stderr, "\tUsage: \"cat S16LE48K.wav | gateway\"\n");
+		fprintf(stderr, "\tOption: [-q] uses stereo (iq) input.\n");
+		fprintf(stderr, "\tConfig: Edit \"gateway.txt\" file.\n\n");
+		exit(0);
+	}
 
 	LoopCount = 0;
 	Message[0] = 0;
 
 	LoadConfigFile();
 	LoadPayloadFiles();
-	LogMessage( " * Press Control-C to quit *\n" );
 
-	// TODO: check config for Mode
 	if (!horus_init(Config.Mode))
 		return -22;
+
+	fprintf(stderr, "Press Control-C to Quit, if there is no input file.\n");
+	if (!getPacket())
+		exit(0);  // supplied file shorter than 1s ?
+
+	curlInit();
+	mainwin = InitDisplay();
+	LogMessage( "**** Based on LoRa Gateway by daveake ****\n" );
 
 	Config.LastPacketAt = time( NULL );
 	while ( getPacket() && !curl_terminate )
@@ -617,7 +635,7 @@ int main( int argc, char **argv ) {
 		ChannelPrintf(  8, 1, "Bad CRC: %d Bad Type: %d", Config.BadCRCCount, Config.UnknownCount );
 		ChannelPrintf(  9, 1, "Horus SNR: %4d   ", Config.snr );
 		ChannelPrintf(  10, 1, "Horus PPM: %4d   ", Config.ppm );
-		ChannelPrintf(  11, 1, "Horus Frequency: %4d   ", Config.freq );
+		ChannelPrintf(  11, 1, "Frequency: %4d   ", Config.freq );
 		ChannelPrintf(  12, 1, "%s  ", Config.Waterfall );
 
 		if ( ++LoopCount > 15 ) {     // no need for fast uploads
