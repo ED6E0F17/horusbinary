@@ -1,6 +1,6 @@
 /*
   Copyright (C) 2018 David Rowe
-
+	    (C) 2016 Dave Ake / UKHAS
   All rights reserved.
 
   This program is free software; you can redistribute it and/or modify
@@ -15,24 +15,17 @@
   along with this program; if not, see <http://www.gnu.org/licenses/>.
 */
 
-#include <assert.h>
-#include <stdlib.h>
-#include <stdio.h>
-#include <getopt.h>
-#include <ctype.h>
+#include "global.h"
 
-#include "horus_api.h"
-#include "fsk.h"
-#include "horus_l2.h"
-
+struct TConfig Config;
+struct TPayload Payloads[PAYLOAD_COUNT];
 struct   horus *hstates;
-struct   MODEM_STATS stats;
 int audio_input_iq = 0;
 int max_demod_in = 0;
 
 /* It would be possible to run a single input through the decoder at two speeds */
-int horus_init( int quadrature ) {
-	hstates = horus_open( HORUS_MODE_SSDV );
+int horus_init( int mode ) {
+	hstates = horus_open( mode ? HORUS_MODE_SSDV : HORUS_MODE_BINARY );
 	if ( hstates == NULL ) {
 		fprintf( stderr, "Couldn't open Horus API\n" );
 		return 0;
@@ -61,11 +54,12 @@ int unpack_hexdump(char src[], uint8_t dest[]) {
 	return count;
 }
 
-int horus_loop( uint8_t *packet  ) {
+int horus_loop( uint8_t *packet ) {
 	int audiosize = sizeof( short ) * ( audio_input_iq ? 2 : 1 );
 	short demod_in[max_demod_in * ( audio_input_iq ? 2 : 1 )];
 	int max_ascii_out = horus_get_max_ascii_out_len( hstates ) | 1; // make sure it is an odd length
 	char ascii_out[max_ascii_out];
+	int len = 0;
 
 	if ( fread( demod_in, audiosize, horus_nin( hstates ), stdin ) ==  horus_nin( hstates ) ) {
 		int result;
@@ -78,52 +72,36 @@ int horus_loop( uint8_t *packet  ) {
 
 		if ( result ) {
 			ascii_out[max_ascii_out - 1] = 0; // make sure it`s a string
-			int len = unpack_hexdump(ascii_out, packet);
-			return len; // Sanity check size against checksum ?
+			len = unpack_hexdump(ascii_out, packet);
 		}
-	}
-	return 0;
-}
-#if 0
-/* horus stats */
-if ( enable_stats && stats_ctr <= 0 ) {
+	} else
+		return -1;
+
+	uint8_t i, f1, f2, f3, f4;
+	struct MODEM_STATS stats;
 
 	horus_get_modem_extended_stats( hstates, &stats );
 
-	/* Print standard 2FSK stats */
+	Config.freq = (int)stats.foff;
+	Config.snr = (int)stats.snr_est;
+        Config.ppm = (int)stats.clock_offset;
+	f1 = (uint8_t)(stats.f_est[0] / 37.0) - 25; // convert 5 KHz to 160 range
+	f2 = (uint8_t)(stats.f_est[1] / 37.0) - 25; // start at 1 kHz
+	f3 = (uint8_t)(stats.f_est[2] / 37.0) - 25; // 1Kh - 6kHz in 133hz steps
+	f4 = (uint8_t)(stats.f_est[3] / 37.0) - 25; // (160 >> 2) = 40 char display
+	for (i=0; i < WATERFALL_SIZE; i++)
+		Config.Waterfall[i] = 32; // " "
 
-	fprintf( stderr,"{\"EbNodB\": %2.2f,\t\"ppm\": %d,",stats.snr_est, (int)stats.clock_offset );
-	fprintf( stderr,"\t\"f1_est\":%.1f,\t\"f2_est\":%.1f",stats.f_est[0], stats.f_est[1] );
+	Config.Waterfall[f1 >> 2] = 94; // "^"
+	Config.Waterfall[f2 >> 2] = 94;
+	Config.Waterfall[f3 >> 2] = 94;
+	Config.Waterfall[f4 >> 2] = 94;
 
-	/* Print 4FSK stats if in 4FSK mode */
-
-	if ( horus_get_mFSK( hstates ) == 4 ) {
-		fprintf( stderr,",\t\"f3_est\":%.1f,\t\"f4_est\":%.1f", stats.f_est[2], stats.f_est[3] );
-	}
-
-	/* Print the eye diagram */
-
-	fprintf( stderr,",\t\"eye_diagram\":[" );
-	for ( i = 0; i < stats.neyetr; i++ ) {
-		fprintf( stderr,"[" );
-		for ( j = 0; j < stats.neyesamp; j++ ) {
-			fprintf( stderr,"%f ",stats.rx_eye[i][j] );
-			if ( j < stats.neyesamp - 1 ) {
-				fprintf( stderr,"," );
-			}
-		}
-		fprintf( stderr,"]" );
-		if ( i < stats.neyetr - 1 ) {
-			fprintf( stderr,"," );
-		}
-	}
-	fprintf( stderr,"]," );
-
-	fprintf( stderr,"\"samp_fft\":[" );
-
-	//#ifdef FIXME_LATER
+	Config.Waterfall[WATERFALL_SHOW] = 0;
+	return len;
+}
 	/* TODO: need a horus_ function to dig into modem spectrum */
-
+#if 0
 	/* Print a sample of the FFT from the freq estimator */
 
 	Ndft = hstates->fsk->Ndft / 2;
@@ -134,31 +112,6 @@ if ( enable_stats && stats_ctr <= 0 ) {
 		}
 	}
 #endif
-
-#include <stdio.h>
-#include <stdlib.h>
-#include <fcntl.h>
-#include <string.h>
-#include <sys/ioctl.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <unistd.h>
-#include <errno.h>
-#include <stdint.h>
-#include <time.h>
-#include <stdarg.h>
-#include <curses.h>
-#include <math.h>
-
-#include "hiperfifo.h"
-#include "utils.h"
-#include "global.h"
-
-
-const char *Modes[3] = {"Slow", "SSDV", "RTTY"};
-
-struct TConfig Config;
-struct TPayload Payloads[PAYLOAD_COUNT];
 
 void LogMessage( const char *format, ... ) {
 	static WINDOW *Window = NULL;
@@ -380,6 +333,9 @@ void LoadConfigFile() {
 	sscanf( Keyword, "%lf", &Config.myAlt );
 	LogMessage( "Location: %lf, %lf, %lf\n", Config.myLat, Config.myLon, Config.myAlt );
 
+	ReadBoolean( fp, "Mode", 1, &Config.Mode );
+	LogMessage( "Mode = %s\n", Config.Mode ? "SSDV" : "Normal" );
+
 	fclose( fp );
 }
 
@@ -524,16 +480,13 @@ uint16_t CRC16( char *ptr, size_t len ) {
 
 
 uint8_t Message[258];
-void getPacket() {
-/* TODO: convert hexdump back to binary */
-	int snr, rssi;
-
-	snr = rssi = 0;
-
-	Config.snr = snr;
-	Config.rssi = rssi;
-
-	Message[0] = horus_loop( &Message[1] );
+int getPacket() {
+	int result;
+	result = horus_loop( &Message[1] );
+	if (result < 0)
+		return 0;
+	Message[0] = (uint8_t)result;
+	return 1;
 }
 
 int main( int argc, char **argv ) {
@@ -553,11 +506,11 @@ int main( int argc, char **argv ) {
 	LogMessage( " * Press Control-C to quit *\n" );
 
 	// TODO: check config for Mode
-	if (!horus_init(0))
+	if (!horus_init(Config.Mode))
 		return -22;
 
 	Config.LastPacketAt = time( NULL );
-	while ( !curl_terminate )
+	while ( getPacket() && !curl_terminate )
 	{
 		Bytes = Message[0];
 		Message[0] = 0;
@@ -662,10 +615,10 @@ int main( int argc, char **argv ) {
 		ChannelPrintf(  6, 1, "Telem Packets: %d   ", Config.TelemetryCount );
 		ChannelPrintf(  7, 1, "Image Packets: %d   ", Config.SSDVCount );
 		ChannelPrintf(  8, 1, "Bad CRC: %d Bad Type: %d", Config.BadCRCCount, Config.UnknownCount );
-		ChannelPrintf(  9, 1, "Packet   SNR: %4d   ", Config.snr );
-		ChannelPrintf(  10, 1, "Packet  RSSI: %4d   ", Config.rssi );
-		//ChannelPrintf(  11, 1, "Current RSSI: %4d   ", rssimode );
-		//ChannelPrintf(  12, 1, "Freq. offset: %4d kHz  ", Config.freq_offset >> 10 );
+		ChannelPrintf(  9, 1, "Horus SNR: %4d   ", Config.snr );
+		ChannelPrintf(  10, 1, "Horus PPM: %4d   ", Config.ppm );
+		ChannelPrintf(  11, 1, "Horus Frequency: %4d   ", Config.freq );
+		ChannelPrintf(  12, 1, "%s  ", Config.Waterfall );
 
 		if ( ++LoopCount > 15 ) {     // no need for fast uploads
 			LoopCount = 0;
@@ -675,7 +628,6 @@ int main( int argc, char **argv ) {
 		}
 		ChannelRefresh();	// redraw ncurses display
 		usleep( 300 * 1000 );   // short delay in case reading from file
-		getPacket();
 	}
 
 	CloseDisplay( mainwin );
