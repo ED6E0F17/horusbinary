@@ -27,30 +27,28 @@
 
 #define WATERFALL_SHOW  40 /* chars to display */
 #define WATERFALL_SIZE  64 /* size of buffer   */
+#define PAYLOAD_COUNT 32
+#define PAYLOAD_SIZE  16
 
 struct TConfig
 {
 	char Tracker[16];
-	int EnableHabitat;
-	int EnableSSDV;
-	int LogLevel;
+	int EnableHabitat, EnableSSDV, Mode;
 	double myLat, myLon, myAlt;
 
 	WINDOW *Window;
 
 	unsigned int TelemetryCount, SSDVCount, BadCRCCount, UnknownCount, SSDVMissing;
-	int Mode;
 	char Payload[16], Time[12];
-	unsigned int Counter;
-	uint32_t Seconds;
+	uint32_t Counter, Seconds;
 	double Longitude, Latitude, Distance, Elevation;
 	unsigned int Altitude, PreviousAltitude, Satellites;
 	time_t LastPacketAt;
 	int rssi, snr, ppm, freq;
+	char Payloads[PAYLOAD_COUNT][PAYLOAD_SIZE];
 	char Waterfall[WATERFALL_SIZE];
 };
 extern struct TConfig Config;
-
 
 #define ID_LONG	32	/* 32 byte extended packet */
 #define ID_SSDV 0x67	/* 255 byte Image Packet */
@@ -77,10 +75,4 @@ uint32_t  Checksum32;	// 32bit SSDV style checksum.
 };
 #pragma pack(pop)
 
-// Storage for 32 Legacy Payload IDs
-#define PAYLOAD_COUNT 32
-struct TPayload
-{
-        int InUse;
-        char Payload[32];
-};
+

@@ -18,7 +18,6 @@
 #include "global.h"
 
 struct TConfig Config;
-struct TPayload Payloads[PAYLOAD_COUNT];
 struct horus *hstates;
 int audioIQ = 0;
 int max_demod_in = 0;
@@ -301,10 +300,10 @@ void LoadConfigFile() {
 	FILE *fp;
 	char *filename = "gateway.txt";
 	char Keyword[32];
+	int i;
 
 	Config.EnableHabitat = 1;
 	Config.EnableSSDV = 1;
-	Config.LogLevel = 0;
 	Config.myLat = 52.0;
 	Config.myLon = -2.0;
 	Config.myAlt = 99.0;
@@ -314,13 +313,9 @@ void LoadConfigFile() {
 		exit( 1 );
 	}
 
-	ReadString( fp, "tracker", Config.Tracker, sizeof( Config.Tracker ), 1 );
-	LogMessage( "Tracker = '%s'\n", Config.Tracker );
-
+	ReadString( fp, "Tracker", Config.Tracker, sizeof( Config.Tracker ), 1 );
 	ReadBoolean( fp, "EnableHabitat", 0, &Config.EnableHabitat );
 	ReadBoolean( fp, "EnableSSDV", 0, &Config.EnableSSDV );
-
-	Config.LogLevel = ReadInteger( fp, "LogLevel", 0, 0 );
 
 	sprintf( Keyword, "52" );
 	ReadString( fp, "Latitude", Keyword, sizeof( Keyword ), 0 );
@@ -331,42 +326,25 @@ void LoadConfigFile() {
 	sprintf( Keyword, "99" );
 	ReadString( fp, "Altitude", Keyword, sizeof( Keyword ), 0 );
 	sscanf( Keyword, "%lf", &Config.myAlt );
-	LogMessage( "Location: %lf, %lf, %lf\n", Config.myLat, Config.myLon, Config.myAlt );
-
 	ReadBoolean( fp, "Mode", 1, &Config.Mode );
-	LogMessage( "Mode = %s\n", Config.Mode ? "SSDV" : "Normal" );
-
+	for (i = 0; i < PAYLOAD_COUNT; i++) {
+		sprintf( Config.Payloads[i], "ID%d", i );
+		ReadString( fp, Config.Payloads[i], Keyword, sizeof(Keyword), 0);
+		if(Keyword[0])
+			snprintf(Config.Payloads[i], PAYLOAD_SIZE, Keyword);
+	}
 	fclose( fp );
 }
 
-void LoadPayloadFile( int ID ) {
-	FILE *fp;
-	char filename[16];
-
-	sprintf( filename, "payload_%d.txt", ID );
-
-	if ( ( fp = fopen( filename, "r" ) ) != NULL ) {
-		//LogMessage("Reading payload file %s\n", filename);
-		ReadString( fp, "payload", Payloads[ID].Payload, sizeof( Payloads[ID].Payload ), 1 );
-		LogMessage( "Payload %d = '%s'\n", ID, Payloads[ID].Payload );
-
-		Payloads[ID].InUse = 1;
-
-		fclose( fp );
-	} else
-	{
-		strcpy( Payloads[ID].Payload, "Unknown" );
-		Payloads[ID].InUse = 0;
-	}
-}
-
-void LoadPayloadFiles( void ) {
-	int ID;
-
-	for ( ID = 0; ID < PAYLOAD_COUNT; ID++ )
-	{
-		LoadPayloadFile( ID );
-	}
+void LogConfigFile(void) {
+	int i;
+	LogMessage( "Tracker = '%s'\n", Config.Tracker );
+	LogMessage( "Location: %lf, %lf, %lf\n", Config.myLat, Config.myLon, Config.myAlt );
+	LogMessage( "Mode = %s\n", Config.Mode ? "SSDV" : "Normal" );
+	LogMessage("Payloads List:");
+	for (i = 0; i < PAYLOAD_COUNT; i++)
+		LogMessage("%s,",Config.Payloads[i]);
+	LogMessage("from gateway.txt\n");
 }
 
 WINDOW * InitDisplay( void ) {
@@ -514,7 +492,6 @@ int main( int argc, char **argv ) {
 	Message[0] = 0;
 
 	LoadConfigFile();
-	LoadPayloadFiles();
 
 	if (!horus_init(Config.Mode))
 		return -22;
@@ -525,24 +502,25 @@ int main( int argc, char **argv ) {
 
 	curlInit();
 	mainwin = InitDisplay();
-	LogMessage( "**** Based on LoRa Gateway by daveake ****\n" );
+	LogConfigFile(); // Cannot display results before this
 
 	Config.LastPacketAt = time( NULL );
 	while ( getPacket() && !curl_terminate )
 	{
 		Bytes = Message[0];
 		Message[0] = 0;
-		if ( Bytes > 0 ) {
-			if ( Message[1] <= 32 ) {						/* Binary telemetry packet */
+		if ( Bytes ) {
+			if ( Message[1] <= ID_LONG ) {						/* Binary telemetry packet */
 				struct TBinaryPacket BinaryPacket;
 				char Data[100], Sentence[100];
 
 				ChannelPrintf( 3, 1, "Binary Telemetry              " );
-				memcpy( &BinaryPacket, &Message[1], sizeof( BinaryPacket ) );	
+				memcpy( &BinaryPacket, &Message[1], sizeof( BinaryPacket ) );
 
-				decode_callsign( Config.Payload, (uint8_t *)&BinaryPacket.NameID );
-				// TODO: legacy callsign
-				// strcpy( Config.Payload, Payloads[0x1f & BinaryPacket.PayloadID] );
+				if (Message[1] == ID_LONG)
+					decode_callsign( Config.Payload, (uint8_t *)&BinaryPacket.NameID );
+				else
+					strcpy( Config.Payload, Config.Payloads[0x1f & BinaryPacket.PayloadID] );
 
 				Config.Seconds = BinaryPacket.Hours * 3600 +
 								 BinaryPacket.Minutes * 60 +
