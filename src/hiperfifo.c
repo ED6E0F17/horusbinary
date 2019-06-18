@@ -42,7 +42,7 @@ int curlUploads( void ) {
 }
 
 int curlRetries( void ) {
-        return uploads; 
+        return retries;
 }
 
 int curlConflicts( void ) {

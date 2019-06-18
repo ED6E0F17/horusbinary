@@ -456,6 +456,23 @@ uint16_t CRC16( char *ptr, size_t len ) {
 	return CRC;
 }
 
+void SaveImage(uint8_t *packet, char *callsign, uint8_t id) {
+	static int last_id = -1;
+	static uint16_t hash = 0;
+	FILE *imgfile;
+	char filename[24];
+
+	if (id != last_id) {
+		hash = (uint16_t)time(NULL);
+		last_id = id;
+	}
+	snprintf(filename, 24, "%s-%03x-%04x.ssdv", callsign, id, hash);
+	imgfile = fopen(filename,"a+");
+	if (imgfile) {
+		fwrite(packet, 1, 256, imgfile);
+		fclose(imgfile);
+	}
+}
 
 uint8_t Message[258];
 int getPacket() {
@@ -580,11 +597,12 @@ int main( int argc, char **argv ) {
 				LogMessage( "SSDV Packet, Callsign %s, Image %d, Packet %d\n",
 							Callsign, Message[6], Message[7] * 256 + Message[8] );
 
+				Message[0] = 0x55;             //  add SSDV sync byte at start of  packet
+				SaveImage(&Message[0], Callsign, Message[6]);
 				if ( Config.EnableSSDV ) {
-					Message[0] = 0x55;             //  add SSDV sync byte at start of  packet
 					UploadImagePacket( &Message[0] );
-					Message[0] = 0x00;             //  also used to flag length of next packet
 				}
+				Message[0] = 0x00;             //  also used to flag length of next packet
 
 				Config.SSDVCount++;
 			} else
@@ -616,10 +634,10 @@ int main( int argc, char **argv ) {
 		ChannelPrintf(  11, 1, "Frequency: %4d   ", Config.freq );
 		ChannelPrintf(  12, 1, "%s  ", Config.Waterfall );
 
-		if ( ++LoopCount > 15 ) {     // no need for fast uploads
+		if ( ++LoopCount > 15 ) {	// expect 7 raw image packets queued in 15 seconds
 			LoopCount = 0;
-			curlPush();
-			UploadMultiImages();
+			UploadMultiImages();	// Push packet onto curl queue
+			curlPush();		// Upload now
 			ChannelPrintf( 4, 1, "Uploads: %4d", curlUploads() );
 		}
 		ChannelRefresh();	// redraw ncurses display

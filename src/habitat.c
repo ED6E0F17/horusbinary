@@ -16,7 +16,6 @@
 #include <time.h>
 #include <curl/curl.h>
 
-#include "utils.h"
 #include "global.h"
 #include "hiperfifo.h"
 
