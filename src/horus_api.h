@@ -55,6 +55,8 @@ uint32_t      horus_nin   (struct horus *hstates);
 int           horus_rx         (struct horus *hstates, char ascii_out[], short demod_in[]);
 int           horus_rx_comp    (struct horus *hstates, char ascii_out[], short demod_in_iq[]);
 int           horus_demod_comp (struct horus *hstates, char ascii_out[], COMP demod_in_comp[]);
+int           horus_bad_crc    (void);
+int           horus_quality    (void);
 
 /* set verbose level */
       

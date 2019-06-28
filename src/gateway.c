@@ -229,8 +229,9 @@ void UploadMultiImages() {
 	strcat( json, "]}" );
 
 	curl_easy_setopt( curl, CURLOPT_WRITEFUNCTION, write_data );
-	curl_easy_setopt( curl, CURLOPT_TIMEOUT, 20 );
+	curl_easy_setopt( curl, CURLOPT_TIMEOUT, 40 );
 	curl_easy_setopt( curl, CURLOPT_NOSIGNAL, 1 );
+	curl_easy_setopt( curl, CURLOPT_FAILONERROR, 1 );
 	curl_easy_setopt( curl, CURLOPT_HTTPHEADER, slist_headers );
 	curl_easy_setopt( curl, CURLOPT_URL, "http://ssdv.habhub.org/api/v0/packets" );
 	curl_easy_setopt( curl, CURLOPT_CUSTOMREQUEST, "POST" );
@@ -429,7 +430,7 @@ void DoPositionCalcs() {
 					 2 * tb * ta * cos( angle_at_centre ) );
 	Config.Distance = distance / 1000;
 
-	ChannelPrintf( 1, 1, "%3.1lfkm, elevation %1.1lf  ", distance / 1000, elevation );
+	ChannelPrintf( 1, 1, "%3.1lfkm, elevation %1.1lf      ", distance / 1000, elevation );
 }
 
 
@@ -466,7 +467,7 @@ void SaveImage(uint8_t *packet, char *callsign, uint8_t id) {
 		hash = (uint16_t)time(NULL);
 		last_id = id;
 	}
-	snprintf(filename, 24, "%s-%03x-%04x.ssdv", callsign, id, hash);
+	snprintf(filename, 24, "%s-%03d-%04x.ssdv", callsign, id, hash);
 	imgfile = fopen(filename,"a+");
 	if (imgfile) {
 		fwrite(packet, 1, 256, imgfile);
@@ -628,22 +629,26 @@ int main( int argc, char **argv ) {
 		ChannelPrintf(  5, 1, "%u%s since last packet   ", interval, timescale );
 		ChannelPrintf(  6, 1, "Telem Packets: %d   ", Config.TelemetryCount );
 		ChannelPrintf(  7, 1, "Image Packets: %d   ", Config.SSDVCount );
-		ChannelPrintf(  8, 1, "Bad CRC: %d Bad Type: %d", Config.BadCRCCount, Config.UnknownCount );
+		ChannelPrintf(  8, 1, "Bad CRC: %d, Quality: %d   ", horus_bad_crc(), horus_quality() );
 		ChannelPrintf(  9, 1, "Horus SNR: %4d   ", Config.snr );
 		ChannelPrintf(  10, 1, "Horus PPM: %4d   ", Config.ppm );
 		ChannelPrintf(  11, 1, "Frequency: %4d   ", Config.freq );
 		ChannelPrintf(  12, 1, "%s  ", Config.Waterfall );
 
-		if ( ++LoopCount > 15 ) {	// expect 7 raw image packets queued in 15 seconds
+		if ( ++LoopCount > 15 ) {	// expect 7 raw image packets queued in 16 seconds
 			LoopCount = 0;
 			UploadMultiImages();	// Push packet onto curl queue
-			curlPush();		// Upload now
-			ChannelPrintf( 4, 1, "Uploads: %4d", curlUploads() );
+			ChannelPrintf( 4, 1, "Uploads:%4d   ", curlUploads() );
 		}
 		ChannelRefresh();	// redraw ncurses display
-		usleep( 300 * 1000 );   // short delay in case reading from file
+		curlPush();		// Upload now
+		usleep( 300 * 1000 );	// short delay in case reading from file
 	}
 
+	LogMessage("Shutting down.\n");
+	UploadMultiImages();	// Push packets onto curl queue
+	curlPush();		// Upload now
+	usleep( 1500 * 1000 );	// very short delay for uploads
 	CloseDisplay( mainwin );
 	curlClean();
 	horus_exit();

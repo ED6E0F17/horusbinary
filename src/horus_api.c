@@ -431,6 +431,11 @@ int horus_rx_comp(struct horus *hstates, char ascii_out[], short demod_in_iq[]) 
     return horus_demod_comp(hstates, ascii_out, demod_in_comp);
 }
 
+/* Tracking for packets corrupt or misdetected */
+static int found_uw = 0;
+static int good_crc = 0;
+int horus_bad_crc(void) {return found_uw - good_crc;}
+
 int horus_demod_comp(struct horus *hstates, char ascii_out[], COMP demod_in_comp[]) {
     int i, j, uw_loc, packet_detected;
     
@@ -485,8 +490,11 @@ int horus_demod_comp(struct horus *hstates, char ascii_out[], COMP demod_in_comp
             if (!packet_detected)
                 packet_detected = extract_horus_binary(hstates, ascii_out, uw_loc, HORUS_MAX_PAYLOAD_BYTES);
 	}
+	found_uw++;
     }
-     
+
+    if (packet_detected)
+	    good_crc++;
     return packet_detected;
 }
 

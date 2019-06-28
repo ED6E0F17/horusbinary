@@ -72,6 +72,18 @@ static void scramble(unsigned char *inout, int nbytes);
 
 /* Functions ----------------------------------------------------------*/
 
+/* Track errors as a percentage of the maximum: one bit in every byte */
+static int errors = 20;
+int horus_quality(void) {return 100 - 5 * errors;}
+void calc_errors( unsigned char *input, unsigned char *output ) {
+	int i, s;
+	s = 0;
+	for (i = 0; i < 20; i++)
+		if (input[i + sizeof(uw)] != output[i])
+			s++;
+	errors = s;
+}
+
 /*
    We are using a Golay (23,12) code which has a codeword 23 bits
    long.  The tx packet format is:
@@ -454,6 +466,7 @@ void horus_l2_decode_rx_packet(unsigned char *output_payload_data,
             }
         }
     }
+    calc_errors(input_rx_data, output_payload_data);
 
     #ifdef DEBUG0
     fprintf(stderr, "\npin - output_payload_data: %ld num_payload_data_bytes: %d\n",
