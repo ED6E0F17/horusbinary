@@ -59,7 +59,9 @@
 #define HORUS_L2_RX
 #endif
 
-static char uw[] = {'$','$'};
+/* Specification includes four preamble bytes, so we can add two of those to the legacy sync word */
+static char uw[] = {0x1b, 0x1b, '$','$'};
+
 
 /* Function Prototypes ------------------------------------------------*/
 
@@ -277,14 +279,14 @@ int horus_l2_encode_tx_packet(unsigned char *output_tx_data,
     /* optional interleaver - we dont interleave UW */
 
     #ifdef INTERLEAVER
-    interleave(&output_tx_data[sizeof(uw)], num_tx_data_bytes-2, 0);
+    interleave(&output_tx_data[sizeof(uw)], num_tx_data_bytes-sizeof(uw), 0);
     #endif
 
     /* optional scrambler to prevent long strings of the same symbol
        which upsets the modem - we dont scramble UW */
 
     #ifdef SCRAMBLER
-    scramble(&output_tx_data[sizeof(uw)], num_tx_data_bytes-2);
+    scramble(&output_tx_data[sizeof(uw)], num_tx_data_bytes-sizeof(uw));
     #endif
 
     return num_tx_data_bytes;
@@ -308,11 +310,11 @@ void horus_l2_decode_rx_packet(unsigned char *output_payload_data,
     /* optional scrambler and interleaver - we dont interleave UW */
 
     #ifdef SCRAMBLER
-    scramble(&input_rx_data[sizeof(uw)], num_tx_data_bytes-2);
+    scramble(&input_rx_data[sizeof(uw)], num_tx_data_bytes-sizeof(uw));
     #endif
 
     #ifdef INTERLEAVER
-    interleave(&input_rx_data[sizeof(uw)], num_tx_data_bytes-2, 1);
+    interleave(&input_rx_data[sizeof(uw)], num_tx_data_bytes-sizeof(uw), 1);
     #endif
 
     pin = input_rx_data + sizeof(uw) + num_payload_data_bytes;
