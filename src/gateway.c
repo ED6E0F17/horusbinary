@@ -19,12 +19,20 @@
 
 struct TConfig Config;
 struct horus *hstates;
+int horus_mode = 0;
 int audioIQ = 0;
 int max_demod_in = 0;
 
 /* It would be possible to run a single input through the decoder at two speeds */
 int horus_init( int mode ) {
-	hstates = horus_open( mode ? HORUS_MODE_SSDV : HORUS_MODE_BINARY );
+	if (mode == 1)
+		horus_mode = HORUS_MODE_SSDV;
+	else if (mode == 2)
+		horus_mode = HORUS_MODE_RTTY;
+	else
+		horus_mode = HORUS_MODE_BINARY;
+
+	hstates = horus_open( horus_mode );
 	if ( hstates == NULL ) {
 		fprintf( stderr, "Couldn't open Horus API\n" );
 		return 0;
@@ -71,7 +79,10 @@ int horus_loop( uint8_t *packet ) {
 
 		if ( result ) {
 			ascii_out[max_ascii_out - 1] = 0; // make sure it`s a string
-			len = unpack_hexdump(ascii_out, packet);
+			if(horus_mode == HORUS_MODE_RTTY)
+				len = sprintf((char *)packet, "%s\n", ascii_out);
+			else
+				len = unpack_hexdump(ascii_out, packet);
 		}
 	} else
 		return -1;
@@ -84,18 +95,21 @@ int horus_loop( uint8_t *packet ) {
 	Config.freq = (int)(-0.1 * stats.foff) * 10;
 	Config.snr = (int)stats.snr_est;
         Config.ppm = (int)stats.clock_offset;
-	f1 = (uint8_t)(stats.f_est[0] / 37.0) - 25; // convert 5 KHz to 160 range
-	f2 = (uint8_t)(stats.f_est[1] / 37.0) - 25; // start at 1 kHz
-	f3 = (uint8_t)(stats.f_est[2] / 37.0) - 25; // 1Kh - 6kHz in 133hz steps
-	f4 = (uint8_t)(stats.f_est[3] / 37.0) - 25; // (160 >> 2) = 40 char display
+
 	for (i=0; i < WATERFALL_SIZE; i++)
 		Config.Waterfall[i] = 32; // " "
-
+	f1 = (uint8_t)(stats.f_est[0] / 37.0) - 25; // convert 5 KHz to 160 range
+	f2 = (uint8_t)(stats.f_est[1] / 37.0) - 25; // start at 1 kHz
 	Config.Waterfall[f1 >> 2] = 94; // "^"
 	Config.Waterfall[f2 >> 2] = 94;
+	Config.Waterfall[WATERFALL_SHOW] = 0;
+	if(horus_mode == HORUS_MODE_RTTY)
+		return len;
+
+	f3 = (uint8_t)(stats.f_est[2] / 37.0) - 25; // 1Kh - 6kHz in 133hz steps
+	f4 = (uint8_t)(stats.f_est[3] / 37.0) - 25; // (160 >> 2) = 40 char display
 	Config.Waterfall[f3 >> 2] = 94;
 	Config.Waterfall[f4 >> 2] = 94;
-
 	Config.Waterfall[WATERFALL_SHOW] = 0;
 	return len;
 }
@@ -327,7 +341,7 @@ void LoadConfigFile() {
 	sprintf( Keyword, "99" );
 	ReadString( fp, "Altitude", Keyword, sizeof( Keyword ), 0 );
 	sscanf( Keyword, "%lf", &Config.myAlt );
-	ReadBoolean( fp, "Mode", 1, &Config.Mode );
+	Config.Mode = ReadInteger( fp, "Mode", 0, 0 );
 	for (i = 0; i < PAYLOAD_COUNT; i++) {
 		sprintf( Config.Payloads[i], "ID%d", i );
 		ReadString( fp, Config.Payloads[i], Keyword, sizeof(Keyword), 0);
@@ -341,7 +355,14 @@ void LogConfigFile(void) {
 	int i;
 	LogMessage( "Tracker = '%s'\n", Config.Tracker );
 	LogMessage( "Location: %lf, %lf, %lf\n", Config.myLat, Config.myLon, Config.myAlt );
-	LogMessage( "Mode = %s\n", Config.Mode ? "SSDV" : "Normal" );
+
+	char *modestring = "Horus Binary";
+	if (Config.Mode == 1)
+		modestring = "Horus SSDV";
+	else if (Config.Mode == 2)
+		modestring = "RTTY100 7N2";
+	LogMessage( "Mode = %s\n", modestring );
+
 	LogMessage("Payloads List:");
 	for (i = 0; i < PAYLOAD_COUNT; i++)
 		LogMessage("%s,",Config.Payloads[i]);
@@ -528,7 +549,16 @@ int main( int argc, char **argv ) {
 		Bytes = Message[0];
 		Message[0] = 0;
 		if ( Bytes ) {
-			if ( Message[1] <= ID_LONG ) {						/* Binary telemetry packet */
+			if (horus_mode == HORUS_MODE_RTTY) {				/* RTTY UKHAS String */
+				char *Sentence = (char *)&Message[1];
+				Sentence[Bytes] = 0;
+				UpdatePayloadLOG( Sentence );
+				LogMessage( "%s", Sentence );
+				UploadTelemetryPacket( Sentence );
+				// DoPositionCalcs();
+				ChannelPrintf( 3, 1, "RTTY Telemetry                " );
+				Config.TelemetryCount++;
+			} else if ( Message[1] <= ID_LONG ) {				/* Binary telemetry packet */
 				struct TBinaryPacket BinaryPacket;
 				char Data[100], Sentence[100];
 
@@ -586,7 +616,7 @@ int main( int argc, char **argv ) {
 					UpdatePayloadLOG( Sentence );
 					LogMessage( "%s", Sentence );
 				}
-			} else if ( (Bytes == 255) && (Message[1] == 0x67) ) {					/* SSDV packet */
+			} else if ( (Bytes == 255) && (Message[1] == 0x67) ) {		/* SSDV packet */
 				char Callsign[8];
 
 				decode_callsign( Callsign, &Message[2] );
@@ -605,9 +635,11 @@ int main( int argc, char **argv ) {
 				}
 				Message[0] = 0x00;             //  also used to flag length of next packet
 
+				ChannelPrintf( 3, 1, "SSDV Packet                   " );
 				Config.SSDVCount++;
 			} else
 			{
+				ChannelPrintf( 3, 1, "Bad Packet Type               " );
 				Config.UnknownCount++;
 			}
 

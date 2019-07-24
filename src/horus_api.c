@@ -49,6 +49,7 @@
 #define HORUS_BINARY_NIN_MAX         (HORUS_BINARY_SAMPLERATE + HORUS_BINARY_TS * 2)
 #define HORUS_MIN_SSDV_SPACING        1000
 #define HORUS_MAX_FREQUENCY           7000
+#define RTTY_7N2			 1    /* RTTY select between between 8n1 and 7n2 */
 
 struct horus {
     int         mode;
@@ -71,8 +72,8 @@ struct horus {
    (2 stop and next start), repeated 2 times */
 
 int8_t uw_horus_rtty[] = {
-  0,0,1,0,0,1,0,1,1,0,
-  0,0,1,0,0,1,0,1,1,0
+  0,0,1,0,0,1,0,RTTY_7N2,1,0,
+  0,0,1,0,0,1,0,RTTY_7N2,1,0
 };
 
 /* Unique word for Horus Binary (<ESC><ESC>$$)
@@ -261,7 +262,7 @@ int extract_horus_rtty(struct horus *hstates, char ascii_out[], int uw_loc) {
 
         if (!endpacket && (char_dec == 42)) {
             endpacket = 1;
-            rx_crc = horus_l2_gen_crc16((uint8_t*)&ascii_out[5], nout-5);
+            rx_crc = horus_l2_gen_crc16((uint8_t*)&ascii_out[2], nout-2); // start after "$$"
             ptx_crc = pout + 1; /* start of tx CRC */
         }
 

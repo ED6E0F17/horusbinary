@@ -4,6 +4,8 @@ EnableSSDV=N
 Latitude=52.0
 Longitude=0.0
 Altitude=0
+
+# Modes: 0=Binary, 1=SSDV, 2=RTTY_100
 Mode=0
 
 # legacy Payload list
@@ -19,5 +21,7 @@ ID8=PY2UEP-4FSK
 ID9=PC4L-4FSK
 ID10=HAPPYSAT-4FSK
 ID11=PH1M-4FSK
+ID12=DK0WT-4FSK
+ID13=PE1ANS-4FSK
 ID23=MAGNU
 
