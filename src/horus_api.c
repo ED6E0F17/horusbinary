@@ -41,15 +41,19 @@
 #define HORUS_BINARY_NUM_PAYLOAD_BYTES  22    /* fixed number of bytes in binary payload     */
 #define HORUS_BINARY_LONG_PAYLOAD_BYTES 32    /* extended binary payload */
 #define HORUS_MAX_PAYLOAD_BYTES        255    /* image data or other long packet*/
-#define HORUS_SSDV_NUM_BITS           3960    /* image data (255 * 8 * 23 / 12 + 32)    */
+#define HORUS_SSDV_NUM_BITS           3960    /* image data (255 * 8 * 23 / 12 + 32)         */
+#define RTTY_MAX_CHARS			80    /* may not be enough, but more adds latency    */
 #define HORUS_BINARY_SAMPLERATE      48000    /* no reason to change this */
-#define HORUS_BINARY_SYMBOLRATE        100    /* may be changed for larger packet sizes */
+#define HORUS_BINARY_SYMBOLRATE        100
+#define HORUS_RTTY_SYMBOLRATE          100
+#define PITS_RTTY_SYMBOLRATE           300
 #define HORUS_SSDV_SYMBOLRATE         1000
 #define HORUS_BINARY_TS              (HORUS_BINARY_SAMPLERATE / HORUS_BINARY_SYMBOLRATE)
 #define HORUS_BINARY_NIN_MAX         (HORUS_BINARY_SAMPLERATE + HORUS_BINARY_TS * 2)
 #define HORUS_MIN_SSDV_SPACING        1000
 #define HORUS_MAX_FREQUENCY           7000
-#define RTTY_7N2			 1    /* RTTY select between between 8n1 and 7n2 */
+#define RTTY_7N2			 1    /* RTTY select between between 8n1 and 7n2   */
+#define RTTY_8N2		       0,1    /* 8N2 has extra databit and second stop bit */
 
 struct horus {
     int         mode;
@@ -76,6 +80,12 @@ int8_t uw_horus_rtty[] = {
   0,0,1,0,0,1,0,RTTY_7N2,1,0
 };
 
+/* Unique word for PITS  RTTY 8 bit '$' character, 3 sync bits */
+int8_t uw_pits_rtty[] = {
+  0,0,1,0,0,1,0,RTTY_8N2,1,0,
+  0,0,1,0,0,1,0,RTTY_8N2,1,0
+};
+
 /* Unique word for Horus Binary (<ESC><ESC>$$)
    - Horus payload sends 4 <ESC> chars as a preamble */
 
@@ -89,57 +99,61 @@ int8_t uw_horus_binary[] = {
 
 struct horus *horus_open (int mode) {
     int i;
-    assert((mode == HORUS_MODE_RTTY) || (mode == HORUS_MODE_BINARY) || (mode == HORUS_MODE_SSDV));
+    assert((mode == HORUS_MODE_RTTY) || (mode == HORUS_MODE_PITS)
+		    || (mode == HORUS_MODE_BINARY) || (mode == HORUS_MODE_SSDV));
 
     struct horus *hstates = (struct horus *)malloc(sizeof(struct horus));
     assert(hstates != NULL);
 
     hstates->Fs = HORUS_BINARY_SAMPLERATE;
-    if (mode == HORUS_MODE_SSDV)
-        hstates->Rs = HORUS_SSDV_SYMBOLRATE;
-    else
-        hstates->Rs = HORUS_BINARY_SYMBOLRATE;
     hstates->verbose = 0;
     hstates->mode = mode;
 
     if (mode == HORUS_MODE_RTTY) {
         hstates->mFSK = 2;
-        hstates->max_packet_len = 1000;
+        hstates->max_packet_len = RTTY_MAX_CHARS * 10;
+	hstates->Rs = HORUS_RTTY_SYMBOLRATE;
 
         /* map UW to make it easier to search for */
-
-        for (i=0; i<sizeof(uw_horus_rtty); i++) {
-            hstates->uw[i] = 2*uw_horus_rtty[i] - 1;
-        }        
+        for (i=0; i<sizeof(uw_horus_rtty); i++)
+		hstates->uw[i] = 2*uw_horus_rtty[i] - 1;
         hstates->uw_len = sizeof(uw_horus_rtty);
         hstates->uw_thresh = sizeof(uw_horus_rtty);	/* allow no bit errors in UW detection */
-        hstates->rx_bits_len = hstates->max_packet_len;
     }
+    else if (mode == HORUS_MODE_PITS) {
+        hstates->mFSK = 2;
+        hstates->max_packet_len = RTTY_MAX_CHARS * 11;
+	hstates->Rs = PITS_RTTY_SYMBOLRATE;
 
-    if (mode == HORUS_MODE_BINARY) {
+        for (i=0; i<sizeof(uw_pits_rtty); i++)
+		hstates->uw[i] = 2*uw_pits_rtty[i] - 1;
+        hstates->uw_len = sizeof(uw_pits_rtty);
+        hstates->uw_thresh = sizeof(uw_pits_rtty);	/* allow no bit errors in UW detection */
+    }
+    else if (mode == HORUS_MODE_BINARY) {
         hstates->mFSK = 4;
         hstates->max_packet_len = HORUS_BINARY_NUM_BITS;
-        for (i=0; i<sizeof(uw_horus_binary); i++) {
-            hstates->uw[i] = 2*uw_horus_binary[i] - 1;
-        }
+        hstates->Rs = HORUS_BINARY_SYMBOLRATE;
+
+        for (i=0; i<sizeof(uw_horus_binary); i++)
+		hstates->uw[i] = 2*uw_horus_binary[i] - 1;
         hstates->uw_len = sizeof(uw_horus_binary);
         hstates->uw_thresh = sizeof(uw_horus_binary) - 6; /* allow 3 bit errors in UW detection */
         horus_l2_init();
-        hstates->rx_bits_len = hstates->max_packet_len;
     }
-
-    if (mode == HORUS_MODE_SSDV) {
+    else if (mode == HORUS_MODE_SSDV) {
         hstates->mFSK = 4;
         hstates->max_packet_len = HORUS_SSDV_NUM_BITS;
-        for (i=0; i<sizeof(uw_horus_binary); i++) {
-            hstates->uw[i] = 2*uw_horus_binary[i] - 1;
-        }
+        hstates->Rs = HORUS_SSDV_SYMBOLRATE;
+
+	for (i=0; i<sizeof(uw_horus_binary); i++)
+		hstates->uw[i] = 2*uw_horus_binary[i] - 1;
         hstates->uw_len = sizeof(uw_horus_binary);
         hstates->uw_thresh = sizeof(uw_horus_binary) - 6; /* allow 3 bit errors in UW detection */
         horus_l2_init();
-        hstates->rx_bits_len = hstates->max_packet_len;
     }
 
+    hstates->rx_bits_len = hstates->max_packet_len;
     hstates->fsk = fsk_create(hstates->Fs, hstates->Rs, hstates->mFSK, 1000, 2*hstates->Rs);
     if (mode == HORUS_MODE_SSDV) {
         hstates->fsk->est_max = HORUS_MAX_FREQUENCY;
@@ -230,8 +244,8 @@ int hex2int(char ch) {
 
 
 int extract_horus_rtty(struct horus *hstates, char ascii_out[], int uw_loc) {
-    const int nfield = 7;                               /* 7 bit ASCII                    */
-    const int npad   = 3;                               /* 3 sync bits between characters */
+    const int nfield = 7;                               /* 7N2 ASCII, ignore MSB for 8N2  */
+    int npad = 2 + 1;                                   /* sync bits between characters   */
     int st = uw_loc;                                    /* first bit of first char        */
     int en = hstates->max_packet_len - nfield;          /* last bit of max length packet  */
 
@@ -241,7 +255,10 @@ int extract_horus_rtty(struct horus *hstates, char ascii_out[], int uw_loc) {
     uint16_t rx_crc, tx_crc;
 
     pout = ascii_out; nout = 0; crc_ok = 0; endpacket = 0; rx_crc = tx_crc = 0;
-    
+
+    if (hstates->mode == HORUS_MODE_PITS)
+	    npad++;		// extra data bit (ignored)
+
     for (i=st; i<en; i+=nfield+npad) {
 
         /* assemble char LSB to MSB */
@@ -463,6 +480,11 @@ int horus_demod_comp(struct horus *hstates, char ascii_out[], COMP demod_in_comp
         if (hstates->mode == HORUS_MODE_RTTY) {
             packet_detected = extract_horus_rtty(hstates, ascii_out, uw_loc);
         }
+
+        if (hstates->mode == HORUS_MODE_PITS) {
+            packet_detected = extract_horus_rtty(hstates, ascii_out, uw_loc);
+        }
+
         if (hstates->mode == HORUS_MODE_BINARY) {
             packet_detected = extract_horus_binary(hstates, ascii_out, uw_loc, HORUS_BINARY_NUM_PAYLOAD_BYTES);
             //#define DUMP_BINARY_PACKET
@@ -515,15 +537,14 @@ int horus_get_max_demod_in(struct horus *hstates) {
 
 int horus_get_max_ascii_out_len(struct horus *hstates) {
     assert(hstates != NULL);
-    if (hstates->mode == HORUS_MODE_RTTY) {
-        return hstates->max_packet_len/10;     /* 7 bit ASCII, plus 3 sync bits */
-    }
-    if (hstates->mode == HORUS_MODE_BINARY) {
+    if (hstates->mode == HORUS_MODE_RTTY)
+        return RTTY_MAX_CHARS+1;
+    if (hstates->mode == HORUS_MODE_PITS)
+        return RTTY_MAX_CHARS+1;
+    if (hstates->mode == HORUS_MODE_BINARY)
         return 2*HORUS_BINARY_NUM_PAYLOAD_BYTES+1; /* HEX DUMP */
-    }
-    if (hstates->mode == HORUS_MODE_SSDV) {
+    if (hstates->mode == HORUS_MODE_SSDV)
         return 2*HORUS_MAX_PAYLOAD_BYTES+1; /* HEX DUMP */
-    }
     assert(0); /* should never get here */
     return 0;
 }

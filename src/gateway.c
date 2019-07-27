@@ -29,6 +29,8 @@ int horus_init( int mode ) {
 		horus_mode = HORUS_MODE_SSDV;
 	else if (mode == 2)
 		horus_mode = HORUS_MODE_RTTY;
+	else if (mode == 3)
+		horus_mode = HORUS_MODE_PITS;
 	else
 		horus_mode = HORUS_MODE_BINARY;
 
@@ -79,7 +81,7 @@ int horus_loop( uint8_t *packet ) {
 
 		if ( result ) {
 			ascii_out[max_ascii_out - 1] = 0; // make sure it`s a string
-			if(horus_mode == HORUS_MODE_RTTY)
+			if((horus_mode == HORUS_MODE_RTTY) || (horus_mode == HORUS_MODE_PITS))
 				len = sprintf((char *)packet, "%s\n", ascii_out);
 			else
 				len = unpack_hexdump(ascii_out, packet);
@@ -103,7 +105,8 @@ int horus_loop( uint8_t *packet ) {
 	Config.Waterfall[f1 >> 2] = 94; // "^"
 	Config.Waterfall[f2 >> 2] = 94;
 	Config.Waterfall[WATERFALL_SHOW] = 0;
-	if(horus_mode == HORUS_MODE_RTTY)
+	if((horus_mode == HORUS_MODE_RTTY) || (horus_mode == HORUS_MODE_PITS))
+
 		return len;
 
 	f3 = (uint8_t)(stats.f_est[2] / 37.0) - 25; // 1Kh - 6kHz in 133hz steps
@@ -361,6 +364,8 @@ void LogConfigFile(void) {
 		modestring = "Horus SSDV";
 	else if (Config.Mode == 2)
 		modestring = "RTTY100 7N2";
+	else if (Config.Mode == 3)
+		modestring = "RTTY300 8N2";
 	LogMessage( "Mode = %s\n", modestring );
 
 	LogMessage("Payloads List:");
@@ -549,7 +554,7 @@ int main( int argc, char **argv ) {
 		Bytes = Message[0];
 		Message[0] = 0;
 		if ( Bytes ) {
-			if (horus_mode == HORUS_MODE_RTTY) {				/* RTTY UKHAS String */
+			if ((horus_mode == HORUS_MODE_RTTY) || (horus_mode == HORUS_MODE_PITS)) { /* UKHAS String */
 				char *Sentence = (char *)&Message[1];
 				Sentence[Bytes] = 0;
 				UpdatePayloadLOG( Sentence );
