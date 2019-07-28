@@ -81,9 +81,17 @@ void calc_errors( unsigned char *input, unsigned char *output ) {
 	int i, s;
 	s = 0;
 	for (i = 0; i < 20; i++)
-		if (input[i + sizeof(uw)] != output[i])
+		if (input[i] != output[i])
 			s++;
 	errors = s;
+}
+
+/* Compare detected bits to output packet */
+#define HORUS_SSDV_NUM_BYTES (258 + 65)
+void ldpc_errors( uint8_t *rx_bytes, uint8_t *packet ) {
+	scramble(rx_bytes, HORUS_SSDV_NUM_BYTES);
+	interleave(rx_bytes, HORUS_SSDV_NUM_BYTES, 1);
+	calc_errors(rx_bytes, packet);
 }
 
 /*
@@ -468,7 +476,7 @@ void horus_l2_decode_rx_packet(unsigned char *output_payload_data,
             }
         }
     }
-    calc_errors(input_rx_data, output_payload_data);
+    calc_errors(input_rx_data + sizeof(uw), output_payload_data);
 
     #ifdef DEBUG0
     fprintf(stderr, "\npin - output_payload_data: %ld num_payload_data_bytes: %d\n",

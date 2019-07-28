@@ -39,9 +39,9 @@
 #define HORUS_API_VERSION                1    /* unique number that is bumped if API changes */
 #define HORUS_BINARY_NUM_BITS          376    /* Telemetry data (22 * 8 * 23/12 + 32)        */
 #define HORUS_BINARY_NUM_PAYLOAD_BYTES  22    /* fixed number of bytes in binary payload     */
-#define HORUS_BINARY_LONG_PAYLOAD_BYTES 32    /* extended binary payload */
-#define HORUS_MAX_PAYLOAD_BYTES        255    /* image data or other long packet*/
-#define HORUS_SSDV_NUM_BITS           3960    /* image data (255 * 8 * 23 / 12 + 32)         */
+#define HORUS_BINARY_LONG_PAYLOAD_BYTES 32    /* extended binary payload                     */
+#define HORUS_MAX_PAYLOAD_BYTES        255    /* image data or other long packet             */
+#define HORUS_SSDV_NUM_BITS           2616    /* image data (32 + (258 + 65) * 8)            */
 #define RTTY_MAX_CHARS			80    /* may not be enough, but more adds latency    */
 #define HORUS_BINARY_SAMPLERATE      48000    /* no reason to change this */
 #define HORUS_BINARY_SYMBOLRATE        100
@@ -67,6 +67,7 @@ struct horus {
     int         uw_len;              /* length of unique word               */
     int         max_packet_len;      /* max length of a telemetry packet    */
     uint8_t    *rx_bits;             /* buffer of received bits             */
+    float      *soft_bits;
     int         rx_bits_len;         /* length of rx_bits buffer            */
     int         crc_ok;              /* most recent packet checksum results */
     int         total_payload_bits;  /* num bits rx-ed in last RTTY packet  */
@@ -169,7 +170,11 @@ struct horus *horus_open (int mode) {
     for(i=0; i<hstates->rx_bits_len; i++) {
         hstates->rx_bits[i] = 0;
     }
-
+    hstates->soft_bits = (float*)malloc(sizeof(float) * hstates->rx_bits_len);
+    assert(hstates->soft_bits != NULL);
+    for(i=0; i<hstates->rx_bits_len; i++) {
+        hstates->soft_bits[i] = 0.0;
+    }
 
     hstates->crc_ok = 0;
     hstates->total_payload_bits = 0;
@@ -326,7 +331,6 @@ int extract_horus_rtty(struct horus *hstates, char ascii_out[], int uw_loc) {
     return crc_ok;
 }
 
-
 int extract_horus_binary(struct horus *hstates, char hex_out[], int uw_loc, int payload_size) {
     const int nfield = 8;                      /* 8 bit binary                   */
     int st = uw_loc;
@@ -365,8 +369,14 @@ int extract_horus_binary(struct horus *hstates, char hex_out[], int uw_loc, int 
         fprintf(stderr, "\n");
     }
     
-    uint8_t payload_bytes[HORUS_MAX_PAYLOAD_BYTES];
-    horus_l2_decode_rx_packet(payload_bytes, rxpacket, payload_size);
+    uint8_t payload_bytes[HORUS_MAX_PAYLOAD_BYTES + 4];
+    if (payload_size == HORUS_MAX_PAYLOAD_BYTES) {
+	float *firstbit = hstates->soft_bits + uw_loc + sizeof(uw_horus_binary);
+	horus_ldpc_decode(payload_bytes, firstbit);
+        ldpc_errors(&rxpacket[4], payload_bytes);  // sizeof(uw_horus_binary);
+    } else
+	horus_l2_decode_rx_packet(payload_bytes, rxpacket, payload_size);
+
     if (payload_size == HORUS_BINARY_NUM_PAYLOAD_BYTES) {
         uint16_t crc_tx, crc_rx;
         crc_rx = horus_l2_gen_crc16(payload_bytes, HORUS_BINARY_NUM_PAYLOAD_BYTES-2);
@@ -458,14 +468,13 @@ int horus_demod_comp(struct horus *hstates, char ascii_out[], COMP demod_in_comp
     }
     
     /* shift buffer of bits to make room for new bits */
-
     for(i=0,j=Nbits; j<rx_bits_len; i++,j++) {
         hstates->rx_bits[i] = hstates->rx_bits[j];
+        hstates->soft_bits[i] = hstates->soft_bits[j];
     }
 
-    /* demodulate latest bits */
-
-    fsk_demod(hstates->fsk, &hstates->rx_bits[rx_bits_len-Nbits], demod_in_comp);
+    /* demodulate latest bits and get soft bits for ldpc */
+    fsk2_demod(hstates->fsk, &hstates->rx_bits[rx_bits_len-Nbits], &hstates->soft_bits[rx_bits_len-Nbits], demod_in_comp);
 
     /* UW search to see if we can find the start of a packet in the buffer */
     if ((uw_loc = horus_find_uw(hstates, Nbits)) != -1) {
