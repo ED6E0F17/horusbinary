@@ -193,6 +193,11 @@ void fsk_demod(struct FSK *fsk, uint8_t rx_bits[],COMP fsk_in[]);
  */
 void fsk_demod_sd(struct FSK *fsk, float rx_bits[],COMP fsk_in[]);
 
+/*
+ * Combined demod for binary and soft bits: as above, so below
+ */
+void fsk2_demod(struct FSK *fsk, uint8_t rx_bits[], float rx_sd[], COMP fsk_in[]);
+
 /* enables/disables normalisation of eye diagram samples */
   
 void fsk_stats_normalise_eye(struct FSK *fsk, int normalise_enable);

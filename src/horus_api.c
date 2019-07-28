@@ -67,6 +67,7 @@ struct horus {
     int         uw_len;              /* length of unique word               */
     int         max_packet_len;      /* max length of a telemetry packet    */
     uint8_t    *rx_bits;             /* buffer of received bits             */
+    float      *soft_bits;
     int         rx_bits_len;         /* length of rx_bits buffer            */
     int         crc_ok;              /* most recent packet checksum results */
     int         total_payload_bits;  /* num bits rx-ed in last RTTY packet  */
@@ -169,7 +170,11 @@ struct horus *horus_open (int mode) {
     for(i=0; i<hstates->rx_bits_len; i++) {
         hstates->rx_bits[i] = 0;
     }
-
+    hstates->soft_bits = (float*)malloc(sizeof(float) * hstates->rx_bits_len);
+    assert(hstates->soft_bits != NULL);
+    for(i=0; i<hstates->rx_bits_len; i++) {
+        hstates->soft_bits[i] = 0.0;
+    }
 
     hstates->crc_ok = 0;
     hstates->total_payload_bits = 0;
@@ -458,14 +463,13 @@ int horus_demod_comp(struct horus *hstates, char ascii_out[], COMP demod_in_comp
     }
     
     /* shift buffer of bits to make room for new bits */
-
     for(i=0,j=Nbits; j<rx_bits_len; i++,j++) {
         hstates->rx_bits[i] = hstates->rx_bits[j];
+        hstates->soft_bits[i] = hstates->soft_bits[j];
     }
 
-    /* demodulate latest bits */
-
-    fsk_demod(hstates->fsk, &hstates->rx_bits[rx_bits_len-Nbits], demod_in_comp);
+    /* demodulate latest bits and get soft bits for ldpc */
+    fsk2_demod(hstates->fsk, &hstates->rx_bits[rx_bits_len-Nbits], &hstates->soft_bits[rx_bits_len-Nbits], demod_in_comp);
 
     /* UW search to see if we can find the start of a packet in the buffer */
     if ((uw_loc = horus_find_uw(hstates, Nbits)) != -1) {
