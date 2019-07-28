@@ -39,9 +39,9 @@
 #define HORUS_API_VERSION                1    /* unique number that is bumped if API changes */
 #define HORUS_BINARY_NUM_BITS          376    /* Telemetry data (22 * 8 * 23/12 + 32)        */
 #define HORUS_BINARY_NUM_PAYLOAD_BYTES  22    /* fixed number of bytes in binary payload     */
-#define HORUS_BINARY_LONG_PAYLOAD_BYTES 32    /* extended binary payload */
-#define HORUS_MAX_PAYLOAD_BYTES        255    /* image data or other long packet*/
-#define HORUS_SSDV_NUM_BITS           3960    /* image data (255 * 8 * 23 / 12 + 32)         */
+#define HORUS_BINARY_LONG_PAYLOAD_BYTES 32    /* extended binary payload                     */
+#define HORUS_MAX_PAYLOAD_BYTES        255    /* image data or other long packet             */
+#define HORUS_SSDV_NUM_BITS           2616    /* image data (32 + (258 + 65) * 8)            */
 #define RTTY_MAX_CHARS			80    /* may not be enough, but more adds latency    */
 #define HORUS_BINARY_SAMPLERATE      48000    /* no reason to change this */
 #define HORUS_BINARY_SYMBOLRATE        100
@@ -331,7 +331,6 @@ int extract_horus_rtty(struct horus *hstates, char ascii_out[], int uw_loc) {
     return crc_ok;
 }
 
-
 int extract_horus_binary(struct horus *hstates, char hex_out[], int uw_loc, int payload_size) {
     const int nfield = 8;                      /* 8 bit binary                   */
     int st = uw_loc;
@@ -370,8 +369,11 @@ int extract_horus_binary(struct horus *hstates, char hex_out[], int uw_loc, int 
         fprintf(stderr, "\n");
     }
     
-    uint8_t payload_bytes[HORUS_MAX_PAYLOAD_BYTES];
-    horus_l2_decode_rx_packet(payload_bytes, rxpacket, payload_size);
+    uint8_t payload_bytes[HORUS_MAX_PAYLOAD_BYTES + 4];
+    if (hstates->mode == HORUS_MODE_SSDV)
+	horus_ldpc_decode(payload_bytes, hstates->soft_bits);
+    else
+	horus_l2_decode_rx_packet(payload_bytes, rxpacket, payload_size);
     if (payload_size == HORUS_BINARY_NUM_PAYLOAD_BYTES) {
         uint16_t crc_tx, crc_rx;
         crc_rx = horus_l2_gen_crc16(payload_bytes, HORUS_BINARY_NUM_PAYLOAD_BYTES-2);
