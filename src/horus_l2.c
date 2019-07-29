@@ -86,6 +86,14 @@ void calc_errors( unsigned char *input, unsigned char *output ) {
 	errors = s;
 }
 
+/* Compare detected bits to output packet */
+#define HORUS_SSDV_NUM_BYTES (258 + 65)
+void ldpc_errors( uint8_t *rx_bytes, uint8_t *packet ) {
+	scramble(rx_bytes, HORUS_SSDV_NUM_BYTES);
+	interleave(rx_bytes, HORUS_SSDV_NUM_BYTES, 1);
+	calc_errors(rx_bytes, packet);
+}
+
 /*
    We are using a Golay (23,12) code which has a codeword 23 bits
    long.  The tx packet format is:

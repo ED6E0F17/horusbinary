@@ -370,10 +370,12 @@ int extract_horus_binary(struct horus *hstates, char hex_out[], int uw_loc, int 
     }
     
     uint8_t payload_bytes[HORUS_MAX_PAYLOAD_BYTES + 4];
-    if (hstates->mode == HORUS_MODE_SSDV)
+    if (payload_size == HORUS_MAX_PAYLOAD_BYTES) {
 	horus_ldpc_decode(payload_bytes, hstates->soft_bits);
-    else
+        ldpc_errors(&rxpacket[4], payload_bytes);  
+    } else
 	horus_l2_decode_rx_packet(payload_bytes, rxpacket, payload_size);
+
     if (payload_size == HORUS_BINARY_NUM_PAYLOAD_BYTES) {
         uint16_t crc_tx, crc_rx;
         crc_rx = horus_l2_gen_crc16(payload_bytes, HORUS_BINARY_NUM_PAYLOAD_BYTES-2);

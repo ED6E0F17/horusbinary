@@ -30,4 +30,6 @@ unsigned short horus_l2_gen_crc16(unsigned char* data_p, unsigned char length);
 uint32_t horus_l2_gen_crc32(unsigned char *data, unsigned char length);
 
 void horus_ldpc_decode(uint8_t *payload, float *sd); 
+void ldpc_errors(uint8_t *rx_bytes, uint8_t *packet);
+
 #endif
