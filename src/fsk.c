@@ -968,6 +968,7 @@ void fsk2_demod(struct FSK *fsk, uint8_t rx_bits[], float rx_sd[], COMP fsk_in[]
             if(M==2){
                 rx_sd[i] = tmax[0] - tmax[1];
             }else if(M==4){
+#if 0
                 /* TODO: Find a soft-decision mode that works for 4FSK */
                 min = sqrtf(min);
                 rx_sd[(i*2)+1] = - tmax[0] ;  /* Bits=00 */
@@ -978,6 +979,10 @@ void fsk2_demod(struct FSK *fsk, uint8_t rx_bits[], float rx_sd[], COMP fsk_in[]
                 rx_sd[(i*2)  ]+=   tmax[2] ;
                 rx_sd[(i*2)+1]+=   tmax[3] ;  /* Bits=11 */
                 rx_sd[(i*2)  ]+=   tmax[3] ;
+#else
+		rx_sd[(i*2)] = fmaxf(tmax[3],tmax[2]) - fmaxf(tmax[1],tmax[0]);//msb
+		rx_sd[i*2+1] = fmaxf(tmax[3],tmax[1]) - fmaxf(tmax[2],tmax[0]);//lsb
+#endif
             }
         }
         /* Accumulate resampled int magnitude for EbNodB estimation */
