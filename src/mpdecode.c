@@ -12,10 +12,8 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <assert.h>
-#include "mpdecode_core.h"
-#ifndef USE_ORIGINAL_PHI0
+#include "mpdecode.h"
 #include "phi0.h"
-#endif
 
 // c_nodes will be an array of NumberParityBits of struct c_node
 // Each c_node contains an array of <degree> c_sub_node elements
@@ -70,40 +68,6 @@ void encode(struct LDPC *ldpc, unsigned char ibits[], unsigned char pbits[]) {
         pbits[p] = tmp;
     }
 }
-
-#ifdef USE_ORIGINAL_PHI0
-/* Phi function */
-static float phi0(
-                  float x )
-{
-  float z;
-
-  if (x>10)
-    return( 0 );
-  else if (x< 9.08e-5 )
-    return( 10 );
-  else if (x > 9)
-    return( 1.6881e-4 );
-  /* return( 1.4970e-004 ); */
-  else if (x > 8)
-    return( 4.5887e-4 );
-  /* return( 4.0694e-004 ); */
-  else if (x > 7)
-    return( 1.2473e-3 );
-  /* return( 1.1062e-003 ); */
-  else if (x > 6)
-    return( 3.3906e-3 );
-  /* return( 3.0069e-003 ); */
-  else if (x > 5)
-    return( 9.2168e-3 );
-  /* return( 8.1736e-003 ); */
-  else {
-    z = (float) exp(x);
-    return( (float) log( (z+1)/(z-1) ) );
-  }
-}
-#endif
-
 
 /* Values for linear approximation (DecoderType=5) */
 

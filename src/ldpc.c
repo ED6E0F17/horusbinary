@@ -1,15 +1,28 @@
+/* ldpc interface to decoder
+ *
+ * 	It is expected that the switch to ldpc will give a 60% speed improvement
+ * over golay code, with no loss of performance over white noise - the use of
+ * soft-bit detection and longer codewords compensating for the expected 2dB loss
+ * from reducing the number of parity bits.
+ *
+ * Golay code can reliably correct a 10% BER, equivalent to a 20% loss of signal
+ * during deep fading. It is not clear how well ldpc will cope with deep fading,
+ * but the shorter packers are bound to be more badly affected.
+ */
+
+
 #include <stdint.h>
 #include "math.h"
-#include "mpdecode_core.h"
+#include "mpdecode.h"
 #include "H2064_516_sparse.h"
 
 #define BYTES_PER_PACKET       256
 #define CRC_BYTES              2
 #define PARITY_BYTES           65
 #define BITS_PER_BYTE          8
-#define UNPACKED_PACKET_BYTES  ( (UW_BYTES + BYTES_PER_PACKET + CRC_BYTES) * BITS_PER_BYTE)
+#define UNPACKED_PACKET_BYTES  ((UW_BYTES + BYTES_PER_PACKET + CRC_BYTES) * BITS_PER_BYTE)
 #define SYMBOLS_PER_PACKET     (BYTES_PER_PACKET + CRC_BYTES + PARITY_BYTES) * BITS_PER_BYTE
-#define HORUS_SSDV_NUM_BITS    2616    /* image data (32 + (258 + 65) * 8) */
+#define HORUS_SSDV_NUM_BITS    2616    /* (32 + (258 + 65) * 8) */
 
 /* Scramble and interleave are 8bit lsb, but bitstream is sent msb */
 #define LSB2MSB(X) (X + 7 - 2 * (X & 7) )
@@ -52,7 +65,8 @@ void horus_ldpc_decode(uint8_t *payload, float *sd) {
 	float sum, mean, sign, sumsq, estvar, estEsN0, x;
 	float llr[HORUS_SSDV_NUM_BITS];
 	float temp[HORUS_SSDV_NUM_BITS];
-	int i, parityCC;
+	uint8_t outbits[HORUS_SSDV_NUM_BITS];
+	int b, i, parityCC;
 	struct LDPC ldpc;
 
 	/* normalise bitstream to log-like */
@@ -91,5 +105,13 @@ void horus_ldpc_decode(uint8_t *payload, float *sd) {
 	ldpc.H_rows = H_rows;
 	ldpc.H_cols = H_cols;
 
-	i = run_ldpc_decoder(&ldpc, payload, llr, &parityCC);
+	i = run_ldpc_decoder(&ldpc, outbits, llr, &parityCC);
+
+	/* convert MSB bits to a packet of bytes */    
+	for (b=0; b<BYTES_PER_PACKET; b++) {
+		uint8_t rxbyte = 0;
+		for(i=0; i<8; i++)
+			rxbyte |= outbits[b*8+i] << (7 - i);
+		payload[b] = rxbyte;
+	}
 }
