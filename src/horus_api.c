@@ -371,8 +371,9 @@ int extract_horus_binary(struct horus *hstates, char hex_out[], int uw_loc, int 
     
     uint8_t payload_bytes[HORUS_MAX_PAYLOAD_BYTES + 4];
     if (payload_size == HORUS_MAX_PAYLOAD_BYTES) {
-	horus_ldpc_decode(payload_bytes, hstates->soft_bits);
-        ldpc_errors(&rxpacket[4], payload_bytes);  
+	float *firstbit = hstates->soft_bits + uw_loc + sizeof(uw_horus_binary);
+	horus_ldpc_decode(payload_bytes, firstbit);
+        ldpc_errors(&rxpacket[4], payload_bytes);  // sizeof(uw_horus_binary);
     } else
 	horus_l2_decode_rx_packet(payload_bytes, rxpacket, payload_size);
 

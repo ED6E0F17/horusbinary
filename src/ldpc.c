@@ -20,8 +20,7 @@
 #define CRC_BYTES              2
 #define PARITY_BYTES           65
 #define BITS_PER_BYTE          8
-#define UNPACKED_PACKET_BYTES  ((UW_BYTES + BYTES_PER_PACKET + CRC_BYTES) * BITS_PER_BYTE)
-#define SYMBOLS_PER_PACKET     (BYTES_PER_PACKET + CRC_BYTES + PARITY_BYTES) * BITS_PER_BYTE
+#define SYMBOLS_PER_PACKET     ((BYTES_PER_PACKET + CRC_BYTES + PARITY_BYTES) * BITS_PER_BYTE)
 #define HORUS_SSDV_NUM_BITS    2616    /* (32 + (258 + 65) * 8) */
 
 /* Scramble and interleave are 8bit lsb, but bitstream is sent msb */
@@ -38,7 +37,7 @@ void unscramble(float *in, float* out) {
 		/* modify i-th bit by xor-ing with scrambler output sequence */
 		ibit = LSB2MSB(i);
 		if ( scrambler_out ) {
-			out[ibit] = -in[ibit];
+			out[ibit] = in[ibit] * -1.0;
 		} else {
 			out[ibit] = in[ibit];
 		}
@@ -54,6 +53,7 @@ void deinterleave(float *in, float* out) {
 	b = 337; /* Largest Prime number less than nbits for a 22 byte packet */
 	for ( n = 0; n < SYMBOLS_PER_PACKET; n++ ) {
 		i = LSB2MSB(n);
+		/* FFS put brackets around macros: a%b*c != a%(b*c) */
 		j = LSB2MSB( (b * n) % SYMBOLS_PER_PACKET);
 		out[i] = in[j];
 	}
@@ -89,8 +89,8 @@ void horus_ldpc_decode(uint8_t *payload, float *sd) {
 		llr[i] = 4.0 * estEsN0 * sd[i];
 
 	/* remove unique word and re-order bits */
-	unscramble(&llr[32], temp);
-	deinterleave(temp,llr);
+	unscramble(llr, temp);
+	deinterleave(temp, llr);
 
 	/* correct errors */
 	ldpc.max_iter = MAX_ITER;
@@ -111,7 +111,7 @@ void horus_ldpc_decode(uint8_t *payload, float *sd) {
 	for (b=0; b<BYTES_PER_PACKET; b++) {
 		uint8_t rxbyte = 0;
 		for(i=0; i<8; i++)
-			rxbyte |= outbits[b*8+i] << (7 - i);
+			rxbyte |= (llr[b*8+i] > 0) ? 1<<(7 - i) : 0; // temp fix
 		payload[b] = rxbyte;
 	}
 }

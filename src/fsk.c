@@ -965,7 +965,7 @@ void fsk2_demod(struct FSK *fsk, uint8_t rx_bits[], float rx_sd[], COMP fsk_in[]
             for( m=0; m<M; m++)
                 tmax[m] = sqrtf(tmax[m]);
             
-            if(M==2){
+            if(M==2){	/* Tones reversed ?? */
                 rx_sd[i] = tmax[0] - tmax[1];
             }else if(M==4){
 #if 0
