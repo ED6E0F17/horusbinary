@@ -26,6 +26,7 @@
 /* Scramble and interleave are 8bit lsb, but bitstream is sent msb */
 #define LSB2MSB(X) (X + 7 - 2 * (X & 7) )
 
+/* Invert bits - ldpc expects negative floats for high hits */
 void unscramble(float *in, float* out) {
 	int i, ibit;
 	uint16_t scrambler = 0x4a80;  /* init additive scrambler at start of every frame */
@@ -37,9 +38,9 @@ void unscramble(float *in, float* out) {
 		/* modify i-th bit by xor-ing with scrambler output sequence */
 		ibit = LSB2MSB(i);
 		if ( scrambler_out ) {
-			out[ibit] = in[ibit] * -1.0;
-		} else {
 			out[ibit] = in[ibit];
+		} else {
+			out[ibit] = -in[ibit];
 		}
 
 		scrambler >>= 1;
@@ -111,7 +112,7 @@ void horus_ldpc_decode(uint8_t *payload, float *sd) {
 	for (b=0; b<BYTES_PER_PACKET; b++) {
 		uint8_t rxbyte = 0;
 		for(i=0; i<8; i++)
-			rxbyte |= (llr[b*8+i] > 0) ? 1<<(7 - i) : 0; // temp fix
+			rxbyte |= outbits[b*8+i] << (7 - i);
 		payload[b] = rxbyte;
 	}
 }

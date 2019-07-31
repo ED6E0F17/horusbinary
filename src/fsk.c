@@ -965,9 +965,9 @@ void fsk2_demod(struct FSK *fsk, uint8_t rx_bits[], float rx_sd[], COMP fsk_in[]
             for( m=0; m<M; m++)
                 tmax[m] = sqrtf(tmax[m]);
             
-            if(M==2){	/* Tones reversed ?? */
+            if(M==2){	/* Negative High */
                 rx_sd[i] = tmax[0] - tmax[1];
-            }else if(M==4){
+            }else if(M==4){ /* Negative Low */
 #if 0
                 /* TODO: Find a soft-decision mode that works for 4FSK */
                 min = sqrtf(min);
