@@ -63,7 +63,7 @@ void deinterleave(float *in, float* out) {
 
 /* LDPC decode */
 void horus_ldpc_decode(uint8_t *payload, float *sd) {
-	float sum, mean, sign, sumsq, estvar, estEsN0, x;
+	float sum, mean, sumsq, estEsN0, x;
 	float llr[HORUS_SSDV_NUM_BITS];
 	float temp[HORUS_SSDV_NUM_BITS];
 	uint8_t outbits[HORUS_SSDV_NUM_BITS];
@@ -76,20 +76,16 @@ void horus_ldpc_decode(uint8_t *payload, float *sd) {
 		sum += fabs(sd[i]);
 	mean = sum / HORUS_SSDV_NUM_BITS;
 
-	sum = sumsq = 0.0;
+	sumsq = 0.0;
 	for ( i = 0; i < HORUS_SSDV_NUM_BITS; i++ ) {
-		sign = (sd[i] > 0.0) - (sd[i] < 0.0);
-		x = (sd[i] / mean - sign);
-		sum += x;
+		x = fabs(sd[i]) / mean - 1.0;
 		sumsq += x * x;
 	}
-	x = HORUS_SSDV_NUM_BITS;
-	estvar = (x * sumsq - sum * sum) / (x * (x - 1) );
-	estEsN0 = 1.0 / (2.0 * estvar + 1E-3);
+	estEsN0 =  2.0 * HORUS_SSDV_NUM_BITS / (sumsq + 1.0e-3);
 	for ( i = 0; i < HORUS_SSDV_NUM_BITS; i++ )
-		llr[i] = 4.0 * estEsN0 * sd[i];
+		llr[i] = estEsN0 * sd[i];
 
-	/* remove unique word and re-order bits */
+	/* reverse whitening and re-order bits */
 	unscramble(llr, temp);
 	deinterleave(temp, llr);
 
