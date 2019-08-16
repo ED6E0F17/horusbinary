@@ -57,7 +57,7 @@ void UploadTelemetryPacket( char *Telemetry ) {
 		SHA256_CTX ctx;
 		unsigned char hash[32];
 		char doc_id[68];
-		char json[1000], now[32];
+		char json[1200], now[32];
 		time_t rawtime;
 		struct tm *tm;
 

@@ -565,7 +565,7 @@ int main( int argc, char **argv ) {
 				Config.TelemetryCount++;
 			} else if ( Message[1] <= ID_LONG ) {				/* Binary telemetry packet */
 				struct TBinaryPacket BinaryPacket;
-				char Data[100], Sentence[100];
+				char Data[90], Sentence[100];
 
 				ChannelPrintf( 3, 1, "Binary Telemetry              " );
 				memcpy( &BinaryPacket, &Message[1], sizeof( BinaryPacket ) );
@@ -604,7 +604,7 @@ int main( int argc, char **argv ) {
 							 BinaryPacket.Temp,
 							 5.0f / 255.0f * (float)BinaryPacket.BattVoltage );
 					if (Message[1] == 32)	// Extended Packet
-						sprintf(Data + strlen(Data), ",%d,%d", BinaryPacket.User1, BinaryPacket.User2);
+						snprintf(Data + strlen(Data), 20, ",%d,%d", BinaryPacket.User1, BinaryPacket.User2);
 					snprintf( Sentence, 100, "$$%s*%04X\n", Data, CRC16( Data, strlen( Data ) ) );
 
 					UploadTelemetryPacket( Sentence );
