@@ -35,7 +35,13 @@
 #include "hiperfifo.h"
 
 CURLM *multi;
+struct curl_slist *slist_headers;
 int running, uploads, retries, curl409;
+
+volatile int curl_terminate = 0;
+int curl_terminated(void) {
+	return curl_terminate;
+}
 
 int curlUploads( void ) {
 	return uploads;
@@ -48,7 +54,6 @@ int curlRetries( void ) {
 int curlConflicts( void ) {
 	return curl409;
 }
-
 
 /* Request clean exit on first Ctrl-C, or force exit on multiple retries */
 static void signal_handler( int sig ) {

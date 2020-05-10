@@ -318,6 +318,7 @@ void LoadConfigFile() {
 	FILE *fp;
 	char *filename = "gateway.txt";
 	char Keyword[32];
+	char Payload[PAYLOAD_SIZE];
 	int i;
 
 	Config.EnableHabitat = 1;
@@ -347,9 +348,10 @@ void LoadConfigFile() {
 	Config.Mode = ReadInteger( fp, "Mode", 0, 0 );
 	for (i = 0; i < PAYLOAD_COUNT; i++) {
 		sprintf( Config.Payloads[i], "ID%d", i );
-		ReadString( fp, Config.Payloads[i], Keyword, sizeof(Keyword), 0);
-		if(Keyword[0])
-			snprintf(Config.Payloads[i], PAYLOAD_SIZE, Keyword);
+		ReadString( fp, Config.Payloads[i], Payload, PAYLOAD_SIZE, 0);
+		if(Payload[0]) {
+			snprintf(Config.Payloads[i], PAYLOAD_SIZE, "%s", Payload);
+		}
 	}
 	fclose( fp );
 }
@@ -549,7 +551,7 @@ int main( int argc, char **argv ) {
 	LogConfigFile(); // Cannot display results before this
 
 	Config.LastPacketAt = time( NULL );
-	while ( getPacket() && !curl_terminate )
+	while ( getPacket() && !curl_terminated() )
 	{
 		Bytes = Message[0];
 		Message[0] = 0;

@@ -254,12 +254,13 @@ int extract_horus_rtty(struct horus *hstates, char ascii_out[], int uw_loc) {
     int st = uw_loc;                                    /* first bit of first char        */
     int en = hstates->max_packet_len - nfield;          /* last bit of max length packet  */
 
-    int      i, j, endpacket, nout, crc_ok;
+    int      i, j, nout, crc_ok;
     uint8_t  char_dec;
     char    *pout, *ptx_crc;
     uint16_t rx_crc, tx_crc;
 
-    pout = ascii_out; nout = 0; crc_ok = 0; endpacket = 0; rx_crc = tx_crc = 0;
+    pout = ascii_out; ptx_crc = NULL;
+    nout = 0; crc_ok = 0; rx_crc = tx_crc = 0;
 
     if (hstates->mode == HORUS_MODE_PITS)
 	    npad++;		// extra data bit (ignored)
@@ -282,8 +283,7 @@ int extract_horus_rtty(struct horus *hstates, char ascii_out[], int uw_loc) {
 
         /*  if we find a '*' that's the end of the packet for RX CRC calculations */
 
-        if (!endpacket && (char_dec == 42)) {
-            endpacket = 1;
+        if (!ptx_crc && (char_dec == 42)) {
             rx_crc = horus_l2_gen_crc16((uint8_t*)&ascii_out[2], nout-2); // start after "$$"
             ptx_crc = pout + 1; /* start of tx CRC */
         }
@@ -299,7 +299,7 @@ int extract_horus_rtty(struct horus *hstates, char ascii_out[], int uw_loc) {
     /* if we found the end of packet flag and have enough chars to compute checksum ... */
 
     //fprintf(stderr, "\n\ntx CRC...\n");
-    if (endpacket && (pout > (ptx_crc+3))) {
+    if (ptx_crc && (pout > (ptx_crc+3))) {
         tx_crc = 0;
         for(i=0; i<4; i++) {
             tx_crc <<= 4;
@@ -319,7 +319,7 @@ int extract_horus_rtty(struct horus *hstates, char ascii_out[], int uw_loc) {
 
     if (hstates->verbose) {
         fprintf(stderr, "\n  endpacket: %d nout: %d tx_crc: 0x%04x rx_crc: 0x%04x\n",
-                endpacket, nout, tx_crc, rx_crc);
+                !!ptx_crc, nout, tx_crc, rx_crc);
     }
             
     /* make sure we don't overrun storage */

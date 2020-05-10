@@ -150,6 +150,7 @@ struct kiss_fft_state{
     fprintf(stderr,"%g + %gi\n",(double)((c)->r),(double)((c)->i) )
 
 
+#define KISS_FFT_USE_ALLOCA
 #ifdef KISS_FFT_USE_ALLOCA
 // define this to allow use of alloca instead of malloc for temporary buffers
 // Temporary buffers are used in two case:

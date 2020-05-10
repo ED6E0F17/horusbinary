@@ -1,8 +1,8 @@
 #include <curl/curl.h>
 
-volatile int	  curl_terminate;
-struct curl_slist *slist_headers;
+extern struct curl_slist *slist_headers;
 
+int curl_terminated();
 void curlInit();
 void curlPush();
 void curlClean();
