@@ -73,6 +73,15 @@ uint16_t  User2;	// Available for use.
 uint32_t  NameID;	// six chars packed using SSDV method.
 uint32_t  Checksum32;	// 32bit SSDV style checksum.
 };
+
+struct SBinaryPacket
+{
+	uint16_t BiSeconds;	//2,2
+	uint8_t  Latitude[3];	//3,5
+	uint8_t  Longitude[3];	//3,8
+	uint16_t Altitude;	//2,10
+	uint16_t Checksum;	//2,12
+};
 #pragma pack(pop)
 
 

@@ -38,7 +38,7 @@
       
 #define HORUS_MODE_BINARY            0
 #define HORUS_MODE_RTTY              1
-#define HORUS_MODE_SSDV              2
+#define HORUS_MODE_SLOW              2
 #define HORUS_MODE_PITS              3
 
 struct horus;
