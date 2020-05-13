@@ -27,7 +27,7 @@ Packets are then transmitted using **4FSK modulation**, at **100 baud**.
 A worked example for generating and encoding these packets is available in the [RS41HUP](https://github.com/darksidelemm/RS41HUP/blob/master/main.c#L401) repository.
 
 ### Slow Horus Binary Packets
-Reduced Packets of 12 bytes are possible at 25 baud, for testing.
+Reduced Packets of 14 bytes are possible at 25 baud, for testing.
 
 ## Hardware Requirements
 The MFSK modes are narrow bandwidth, and can be received using a regular single-sideband (SSB) radio receiver. This could be a 'traditional' receiver (like a Icom IC-7000, Yaesu FT-817 to name but a few), or a software-defined radio receiver. The point is we need to receive the on-air signal (we usually transmit on 70cm) with an Upper-Sideband (USB) demodulator, and then get that audio into your computer.
@@ -78,7 +78,7 @@ The file `gateway.txt` should then be modified with your info before use, and to
 
 
 ## Gateway Usage
-The `gateway` binary accepts 12khz 16-bit signed-integer samples via stdin, and can decode MFSK packets at 100 baud or 1000 baud.
+The `gateway` binary accepts 12khz 16-bit signed-integer samples via stdin, and can decode MFSK packets at 100 baud or 25 baud.
 
 Suitable audio inputs could be from a sound card input, or from a SDR receiver application such as GQRX or rtl_fm).
 

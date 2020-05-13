@@ -51,7 +51,7 @@ struct v_node {
 void encode(struct LDPC *ldpc, unsigned char ibits[], unsigned char pbits[]) {
 	unsigned int p, i, tmp, par, prev = 0;
 	int ind;
-	uint16_t     *H_rows = ldpc->H_rows;
+	const uint16_t *H_rows = ldpc->H_rows;
 
 	for ( p = 0; p < ldpc->NumberParityBits; p++ ) {
 		par = 0;
@@ -78,12 +78,12 @@ void init_c_v_nodes(struct c_node *c_nodes,
 					int shift,
 					int NumberParityBits,
 					int max_row_weight,
-					uint16_t *H_rows,
+					const uint16_t *H_rows,
 					int H1,
 					int CodeLength,
 					struct v_node *v_nodes,
 					int NumberRowsHcols,
-					uint16_t *H_cols,
+					const uint16_t *H_cols,
 					int max_col_weight,
 					int dec_type,
 					float  *input){

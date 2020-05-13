@@ -39,9 +39,10 @@
 #define HORUS_API_VERSION                1    /* unique number that is bumped if API changes */
 #define HORUS_BINARY_NUM_BITS          376    /* Telemetry data (22 * 8 * 23/12 + 32)        */
 #define HORUS_BINARY_NUM_PAYLOAD_BYTES  22    /* fixed number of bytes in binary payload     */
-#define HORUS_BINARY_MIN_PAYLOAD_BYTES  12    /* compact binary payload                      */
+#define HORUS_BINARY_MIN_PAYLOAD_BYTES  14    /* compact binary payload                      */
 #define HORUS_MAX_PAYLOAD_BYTES         32    /* extended binary payload                     */
-#define HORUS_SLOW_NUM_BITS            216    /* Telemetry data (12 * 8 * 23/12 + 32)        */
+#define HORUS_SLOW_NUM_BITS            168    /* Telemetry data ((14 + 7) * 8)   LDPC        */
+#define HORUS_SLOW_BYTES          (14 + 7)    /* Used for error checking.  TODO: remove this */
 #define RTTY_MAX_CHARS			80    /* may not be enough, but more adds latency    */
 #define HORUS_BINARY_SAMPLERATE      12000    /* ** Reduced to support lower Symbol rates ** */
 #define HORUS_BINARY_SYMBOLRATE        100
@@ -139,7 +140,7 @@ struct horus *horus_open (int mode) {
         for (i=0; i<sizeof(uw_horus_binary); i++)
 		hstates->uw[i] = 2*uw_horus_binary[i] - 1;
         hstates->uw_len = sizeof(uw_horus_binary);
-        hstates->uw_thresh = sizeof(uw_horus_binary) - 6; /* allow 3 bit errors in UW detection */
+        hstates->uw_thresh = sizeof(uw_horus_binary) - 3*2; /* allow 3 bit errors in UW detection */
         horus_l2_init();
     }
     else if (mode == HORUS_MODE_SLOW) {
@@ -150,7 +151,7 @@ struct horus *horus_open (int mode) {
 	for (i=0; i<sizeof(uw_horus_binary); i++)
 		hstates->uw[i] = 2*uw_horus_binary[i] - 1;
         hstates->uw_len = sizeof(uw_horus_binary);
-        hstates->uw_thresh = sizeof(uw_horus_binary) - 6; /* allow 3 bit errors in UW detection */
+        hstates->uw_thresh = sizeof(uw_horus_binary) - 4*2; /* allow 4 bit errors in UW detection */
         horus_l2_init();
     }
 
@@ -160,8 +161,7 @@ struct horus *horus_open (int mode) {
         hstates->fsk->est_space = HORUS_MIN_SLOW_SPACING;
     }
 
-    /* allocate enough room for two packets so we know there will be
-       one complete packet if we find a UW at start */
+    /* allocate enough room for one complete packet after the buffer that we search for a header  */
     
     hstates->rx_bits_len += hstates->fsk->Nbits;
     hstates->rx_bits = (uint8_t*)malloc(hstates->rx_bits_len);
@@ -214,7 +214,7 @@ int horus_find_uw(struct horus *hstates, int n) {
         
         corr = 0;
         for(j=0; j<hstates->uw_len; j++) {
-            corr += rx_bits_mapped[i+j]*hstates->uw[j];
+            corr += rx_bits_mapped[i+j]*hstates->uw[j]; // +/- 1
         }
         
         /* peak pick maximum */
@@ -369,8 +369,15 @@ int extract_horus_binary(struct horus *hstates, char hex_out[], int uw_loc, int 
     }
     
     uint8_t payload_bytes[HORUS_MAX_PAYLOAD_BYTES + 4];
-    horus_l2_decode_rx_packet(payload_bytes, rxpacket, payload_size);
+    if (payload_size == HORUS_BINARY_NUM_PAYLOAD_BYTES) {
+        horus_l2_decode_rx_packet(payload_bytes, rxpacket, payload_size);
+    }else {
+        float *softbits = hstates->soft_bits + uw_loc + sizeof(uw_horus_binary);
+	horus_ldpc_decode( payload_bytes, softbits );
+	ldpc_errors( payload_bytes, &rxpacket[4], HORUS_SLOW_BYTES);
+    }
 
+    /* calculate checksum */
     {
         uint16_t crc_tx, crc_rx;
         crc_rx = horus_l2_gen_crc16(payload_bytes, payload_size - 2);
@@ -384,7 +391,6 @@ int extract_horus_binary(struct horus *hstates, char hex_out[], int uw_loc, int 
     }
 
     /* convert to ASCII string of hex characters */
-
     hex_out[0] = 0;
     char hex[3];
     for (b=0; b<payload_size; b++) {

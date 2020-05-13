@@ -14,14 +14,13 @@
 #include <stdint.h>
 #include "math.h"
 #include "mpdecode.h"
-#include "H2064_516_sparse.h"
+#include "H112_56.h"
 
-#define BYTES_PER_PACKET       256
-#define CRC_BYTES              2
-#define PARITY_BYTES           65
-#define BITS_PER_BYTE          8
-#define SYMBOLS_PER_PACKET     ((BYTES_PER_PACKET + CRC_BYTES + PARITY_BYTES) * BITS_PER_BYTE)
-#define HORUS_SSDV_NUM_BITS    2616    /* (32 + (258 + 65) * 8) */
+// Need a sensible prime number for interleaving, but using the same value
+// as Horus binary 22 byte golay code also works.... Check it is coprime!
+
+#define SYMBOLS_PER_PACKET     ((BYTES_PER_PACKET + PARITY_BYTES) * 8)
+#define HORUS_SLOW_NUM_BITS    SYMBOLS_PER_PACKET   /* 4fsk bits > symbols */
 
 /* Scramble and interleave are 8bit lsb, but bitstream is sent msb */
 #define LSB2MSB(X) (X + 7 - 2 * (X & 7) )
@@ -48,14 +47,13 @@ void unscramble(float *in, float* out) {
 	}
 }
 
+// Interleaving is a bit unnecessary with LDPC
 void deinterleave(float *in, float* out) {
-	int b, n, i, j;
+	int n, i, j;
 
-	b = 337; /* Largest Prime number less than nbits for a 22 byte packet */
 	for ( n = 0; n < SYMBOLS_PER_PACKET; n++ ) {
 		i = LSB2MSB(n);
-		/* FFS put brackets around macros: a%b*c != a%(b*c) */
-		j = LSB2MSB( (b * n) % SYMBOLS_PER_PACKET);
+		j = LSB2MSB( (COPRIME * n) % SYMBOLS_PER_PACKET);
 		out[i] = in[j];
 	}
 }
@@ -64,25 +62,25 @@ void deinterleave(float *in, float* out) {
 /* LDPC decode */
 void horus_ldpc_decode(uint8_t *payload, float *sd) {
 	float sum, mean, sumsq, estEsN0, x;
-	float llr[HORUS_SSDV_NUM_BITS];
-	float temp[HORUS_SSDV_NUM_BITS];
-	uint8_t outbits[HORUS_SSDV_NUM_BITS];
+	float llr[HORUS_SLOW_NUM_BITS];
+	float temp[HORUS_SLOW_NUM_BITS];
+	uint8_t outbits[HORUS_SLOW_NUM_BITS];
 	int b, i, parityCC;
 	struct LDPC ldpc;
 
 	/* normalise bitstream to log-like */
 	sum = 0.0;
-	for ( i = 0; i < HORUS_SSDV_NUM_BITS; i++ )
+	for ( i = 0; i < HORUS_SLOW_NUM_BITS; i++ )
 		sum += fabs(sd[i]);
-	mean = sum / HORUS_SSDV_NUM_BITS;
+	mean = sum / HORUS_SLOW_NUM_BITS;
 
 	sumsq = 0.0;
-	for ( i = 0; i < HORUS_SSDV_NUM_BITS; i++ ) {
+	for ( i = 0; i < HORUS_SLOW_NUM_BITS; i++ ) {
 		x = fabs(sd[i]) / mean - 1.0;
 		sumsq += x * x;
 	}
-	estEsN0 =  2.0 * HORUS_SSDV_NUM_BITS / (sumsq + 1.0e-3) / mean;
-	for ( i = 0; i < HORUS_SSDV_NUM_BITS; i++ )
+	estEsN0 =  2.0 * HORUS_SLOW_NUM_BITS / (sumsq + 1.0e-3) / mean;
+	for ( i = 0; i < HORUS_SLOW_NUM_BITS; i++ )
 		llr[i] = estEsN0 * sd[i];
 
 	/* reverse whitening and re-order bits */

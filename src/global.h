@@ -56,7 +56,7 @@ extern struct TConfig Config;
 #pragma pack(push,1) 
 struct TBinaryPacket
 {
-uint8_t   PayloadID;	// Extended Type.(SSDV/32byte/Legacy)
+uint8_t   PayloadID;
 uint16_t  Counter;
 uint8_t   Hours;
 uint8_t   Minutes;
@@ -68,11 +68,12 @@ uint8_t   Speed;
 uint8_t   Sats;
 int8_t    Temp;
 uint8_t   BattVoltage;	// 0 = 0v, 255 = 5.0V, linear steps in-between.
-uint16_t  User1;	// Legacy CRC16-CCITT Checksum.
-uint16_t  User2;	// Available for use.
-uint32_t  NameID;	// six chars packed using SSDV method.
-uint32_t  Checksum32;	// 32bit SSDV style checksum.
-};
+uint16_t  Checksum;	// Legacy CRC16-CCITT Checksum.
+};	// 22 byte legacy packet
+
+//uint16_t  User[3];	// Available for use.
+//uint32_t  NameID;	// six chars packed using SSDV method.
+	// options for 32 byte extended packet
 
 struct SBinaryPacket
 {
@@ -80,8 +81,10 @@ struct SBinaryPacket
 	uint8_t  Latitude[3];	//3,5
 	uint8_t  Longitude[3];	//3,8
 	uint16_t Altitude;	//2,10
-	uint16_t Checksum;	//2,12
-};
+	int16_t  User;		//2,12
+	// Packed: 5bit ID | 4bit Volts*10 | 2bit Sats/4 | 5bit Temp/2
+	uint16_t Checksum;	//2,14
+};	// 14 byte compact packet
 #pragma pack(pop)
 
 

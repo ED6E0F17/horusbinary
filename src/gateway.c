@@ -382,7 +382,7 @@ WINDOW * InitDisplay( void ) {
 	// attrset(COLOR_PAIR(1) | A_BOLD);
 
 	// Title bar
-	mvaddstr( 0, 3, " Horus Binary Habitat and SSDV Gateway " );
+	mvaddstr( 0, 3, " Horus Binary and RTTY Habitat Gateway " );
 	refresh();
 
 	Config.Window = newwin( 13, 34, 1, 0 );
@@ -546,7 +546,7 @@ int main( int argc, char **argv ) {
 		Bytes = Message[0];
 		Message[0] = 0;
 		if ( Bytes ) {
-			if ((horus_mode == HORUS_MODE_RTTY) || (horus_mode == HORUS_MODE_PITS)) { /* UKHAS String */
+			if ((horus_mode == HORUS_MODE_RTTY) || (horus_mode == HORUS_MODE_PITS)) { /* UKHAS ASCII String */
 				char *Sentence = (char *)&Message[1];
 				Sentence[Bytes] = 0;
 				UpdatePayloadLOG( Sentence );
@@ -555,35 +555,43 @@ int main( int argc, char **argv ) {
 				// DoPositionCalcs();
 				ChannelPrintf( 3, 1, "RTTY Telemetry                " );
 				Config.TelemetryCount++;
-			} else if (horus_mode == HORUS_MODE_SLOW) {			/* Short 12 byte packet */
+			} else if (horus_mode == HORUS_MODE_SLOW) {			/* Short 14 byte packet */
 				struct SBinaryPacket BinaryPacket;
 				char Data[90], Sentence[100];
 				int position;
 			        unsigned hours, minutes, seconds;
+				int16_t user, temp, sats, volts;
 
 				ChannelPrintf( 3, 1, "Binary Telemetry              " );
 				memcpy( &BinaryPacket, &Message[1], sizeof( BinaryPacket ) );
 
+				strcpy( Config.Payload, Config.Payloads[0x1f & BinaryPacket.User] );
 				Config.Seconds = BinaryPacket.BiSeconds * 2;
 				hours =  (Config.Seconds / 3600);
 				minutes =  (Config.Seconds / 60) - (hours * 60);
 				seconds =  Config.Seconds - (hours * 3600) - (minutes * 60);
-				position = ((int)BinaryPacket.Latitude[2] << 16) +
-						((uint8_t)BinaryPacket.Latitude[1] << 8) +
+
+				position = ((int)(int8_t)BinaryPacket.Latitude[2] << 16) |
+						((uint8_t)BinaryPacket.Latitude[1] << 8) |
 						((uint8_t)BinaryPacket.Latitude[2]);
-				Config.Latitude = (double)position / 32768.0;
-				position = ((int)BinaryPacket.Longitude[2] << 16) +
-						((uint8_t)BinaryPacket.Longitude[1] << 8) +
+				Config.Latitude = (double)position * 256.0f * 1.0e-7;
+				position = ((int)(int8_t)BinaryPacket.Longitude[2] << 16) |
+						((uint8_t)BinaryPacket.Longitude[1] << 8) |
 						((uint8_t)BinaryPacket.Longitude[2]);
-				Config.Longitude = (double)position / 32768.0;
+				Config.Longitude = (double)position * 256.0 * 1.0e-7 ;
 				Config.Altitude = BinaryPacket.Altitude;
+				user = BinaryPacket.User;
+				sats = ((user >> 9) & 0x3) << 2; // 0,4,8,12
+				volts =((user >> 5) & 0xf) + 16; // 16 to 31
+				temp = (user >> 11) << 1;	 //-32 to 31
 
 				{ // - Assume that checksum was confirmed by demod stage (?)
-					snprintf( Data, 90, "TEST,0,%02u:%02u:%02u,%1.5f,%1.5f,%u",
-							 // name, counter,
+					snprintf( Data, 90, "%s,0,%02u:%02u:%02u,%1.5f,%1.5f,%u,0,%d,%d,%0.2f",
+							 Config.Payload, // counter,
 							 hours, minutes, seconds,
 							 Config.Latitude, Config.Longitude,
-							 Config.Altitude);
+							 Config.Altitude, //speed
+							 sats, temp, 0.1 * volts);
 					snprintf( Sentence, 100, "$$%s*%04X\n", Data, CRC16( Data, strlen( Data ) ) );
 				}
 
@@ -593,17 +601,14 @@ int main( int argc, char **argv ) {
 				DoPositionCalcs();
 				Config.TelemetryCount++;
 
-			} else if ( Message[1] <= ID_LONG ) {				/* Binary telemetry packet */
+			} else {							/* Horus Binary 22 byte packet */
 				struct TBinaryPacket BinaryPacket;
 				char Data[90], Sentence[100];
 
 				ChannelPrintf( 3, 1, "Binary Telemetry              " );
 				memcpy( &BinaryPacket, &Message[1], sizeof( BinaryPacket ) );
 
-				if (Message[1] == ID_LONG)
-					decode_callsign( Config.Payload, (uint8_t *)&BinaryPacket.NameID );
-				else
-					strcpy( Config.Payload, Config.Payloads[0x1f & BinaryPacket.PayloadID] );
+				strcpy( Config.Payload, Config.Payloads[0x1f & BinaryPacket.PayloadID] );
 
 				Config.Seconds = BinaryPacket.Hours * 3600 +
 								 BinaryPacket.Minutes * 60 +
@@ -633,8 +638,6 @@ int main( int argc, char **argv ) {
 							 BinaryPacket.Sats,
 							 BinaryPacket.Temp,
 							 5.0f / 255.0f * (float)BinaryPacket.BattVoltage );
-					if (Message[1] == 32)	// Extended Packet
-						snprintf(Data + strlen(Data), 20, ",%d,%d", BinaryPacket.User1, BinaryPacket.User2);
 					snprintf( Sentence, 100, "$$%s*%04X\n", Data, CRC16( Data, strlen( Data ) ) );
 
 					UploadTelemetryPacket( Sentence );
@@ -651,7 +654,11 @@ int main( int argc, char **argv ) {
 					UpdatePayloadLOG( Sentence );
 					LogMessage( "%s", Sentence );
 				}
-			} else if ( (Bytes == 255) && (Message[1] == 0x67) ) {		/* SSDV packet */
+			}
+
+// Could support SSDV for RTTY 300 baud
+#if 0
+			else if ( (Bytes == 255) && (Message[1] == 0x67) ) {		/* SSDV packet */
 				char Callsign[8];
 
 				decode_callsign( Callsign, &Message[2] );
@@ -677,7 +684,7 @@ int main( int argc, char **argv ) {
 				ChannelPrintf( 3, 1, "Bad Packet Type               " );
 				Config.UnknownCount++;
 			}
-
+#endif
 			Config.LastPacketAt = time( NULL );
 		}
 

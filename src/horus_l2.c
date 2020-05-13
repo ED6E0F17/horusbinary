@@ -55,6 +55,9 @@
 #include "horus_l2.h"
 #include "golay23.h"
 
+#define COPRIME 337  /*  Default Coprime for Horus Binary   */
+#define COPRIME2 17  /* For 168 bits we need something else */
+
 #ifdef HORUS_L2_UNITTEST
 #define HORUS_L2_RX
 #endif
@@ -77,7 +80,7 @@ static void scramble(unsigned char *inout, int nbytes);
 /* Track errors as a percentage of the maximum: one bit in every byte */
 static int errors = 20;
 int horus_quality(void) {return 100 - 5 * errors;}
-void calc_errors( unsigned char *input, unsigned char *output ) {
+void calc_errors( uint8_t *input, const uint8_t *output ) {
 	int i, s;
 	s = 0;
 	for (i = 0; i < 20; i++)
@@ -86,11 +89,10 @@ void calc_errors( unsigned char *input, unsigned char *output ) {
 	errors = s;
 }
 
-/* Compare detected bits to output packet */
-#define HORUS_SSDV_NUM_BYTES (258 + 65)
-void ldpc_errors( uint8_t *rx_bytes, uint8_t *packet ) {
-	scramble(rx_bytes, HORUS_SSDV_NUM_BYTES);
-	interleave(rx_bytes, HORUS_SSDV_NUM_BYTES, 1);
+/* Compare detected bits to corrected bits */
+void ldpc_errors( const uint8_t *packet, uint8_t *rx_bytes, int bytelength ) {
+	scramble(rx_bytes, bytelength);
+	interleave(rx_bytes, bytelength, COPRIME2);
 	calc_errors(rx_bytes, packet);
 }
 
@@ -497,15 +499,17 @@ void interleave(unsigned char *inout, int nbytes, int dir)
     uint32_t b;
     unsigned char out[nbytes];
 
-    memset(out, 0, nbytes);
-    b = 337; /* Largest Prime number less than nbits for a 22 byte packet */
+    if (dir > 1)
+	    b = COPRIME2;
+    else
+	    b = COPRIME;
 
+    memset(out, 0, nbytes);
     for(n=0; n<nbits; n++) {
 
         /*
           "On the Analysis and Design of Good Algebraic Interleavers", Xie et al,eq (5)
         */
-
         i = n;
         j = (b*i) % nbits; /* note these all need to be 32-bit ints to make multiply work without overflow */
         

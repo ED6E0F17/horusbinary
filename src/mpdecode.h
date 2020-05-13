@@ -32,8 +32,8 @@ struct LDPC {
     int data_bits_per_frame;
     int coded_bits_per_frame;
     int coded_syms_per_frame;
-    uint16_t *H_rows;
-    uint16_t *H_cols;
+    const uint16_t *H_rows;
+    const uint16_t *H_cols;
 };
 
 void encode(struct LDPC *ldpc, unsigned char ibits[], unsigned char pbits[]);
