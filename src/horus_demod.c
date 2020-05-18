@@ -43,6 +43,7 @@
 #include "horus_api.h"
 #include "fsk.h"
 #include "horus_l2.h"
+#include "mpdecode.h"
 
 int main(int argc, char *argv[]) {
     struct   horus *hstates;
@@ -142,6 +143,7 @@ int main(int argc, char *argv[]) {
 
     if (verbose) {
          fprintf(stderr, "mode: %d verbose: %d stats_loop: %d stats_rate: %d\n",mode, verbose, stats_loop, stats_rate);
+	 verbose_ldpc(1);
     }
     if (strcmp(argv[dx],"-")==0) {
         fin = stdin;
@@ -188,7 +190,7 @@ int main(int argc, char *argv[]) {
         int result;
 
         if (verbose) {
-            fprintf(stderr, "read nin %d\n", horus_nin(hstates));
+            // fprintf(stderr, "read nin %d\n", horus_nin(hstates));
         }
 
         if (quadrature)

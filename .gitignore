@@ -1,4 +1,6 @@
 src/*o
 src/horus_demod
+src/gateway
+src/test
 horus_demod
 *log

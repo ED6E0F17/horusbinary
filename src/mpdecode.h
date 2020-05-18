@@ -47,5 +47,6 @@ void symbols_to_llrs(float llr[], COMP rx_qpsk_symbols[], float rx_amps[], float
 
 void ldpc_print_info(struct LDPC *ldpc);
 
+void verbose_ldpc(int level);
 
 #endif

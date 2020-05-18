@@ -8,6 +8,7 @@
 
 #include "utils.h"
 
+
 // DBL_INT_ADD treats two unsigned ints a and b as one 64-bit integer and adds c to it
 #define DBL_INT_ADD( a,b,c ) if((a + c) < a){++b;} a = a + c;
 #define ROTLEFT( a,b ) ( ( ( a ) << ( b ) ) | ( ( a ) >> ( 32 - ( b ) ) ) )

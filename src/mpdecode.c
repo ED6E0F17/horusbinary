@@ -15,6 +15,10 @@
 #include "mpdecode.h"
 #include "phi0.h"
 
+static int verbose;
+void verbose_ldpc(int level) {verbose = level;}
+#define  may_printf(X,Y) if(verbose)fprintf(stderr,X,Y)
+
 // c_nodes will be an array of NumberParityBits of struct c_node
 // Each c_node contains an array of <degree> c_sub_node elements
 // This structure reduces the indexing caluclations in SumProduct()
@@ -245,7 +249,7 @@ void init_c_v_nodes(struct c_node *c_nodes,
 		// Populate sub nodes
 
 		/* index tells which c-nodes this v-node is connected to */
-		v_nodes[i].initial_value = input[i];
+		v_nodes[i].initial_value = input[i] * 0.99f;
 		count = 0;
 
 		for ( j = 0; j < v_nodes[i].degree; j++ ) {
@@ -315,7 +319,10 @@ int SumProduct( int       *parityCheckCount,
 	float temp_sum;
 	float Qi;
 	int ssum;
+	int firstrun;
 
+	may_printf("  %s","Bad parity bits:");
+	firstrun = 1;
 
 	result = max_iter;
 	for ( iter = 0; iter < max_iter; iter++ ) {
@@ -353,7 +360,6 @@ int SumProduct( int       *parityCheckCount,
 
 		/* update q */
 		for ( i = 0; i < CodeLength; i++ ) {
-
 			/* first compute the LLR */
 			Qi = v_nodes[i].initial_value;
 			for ( j = 0; j < v_nodes[i].degree; j++ ) {
@@ -380,18 +386,26 @@ int SumProduct( int       *parityCheckCount,
 			}
 		}
 
-		//fprintf(stderr, "Iter %d: errors = %d\n", iter, ssum - 516);
+        if ((verbose > 1) || firstrun) {
+            firstrun = 0;
+            may_printf("%2d,", NumberParityBits - ssum);
+		}
+
 		// count the number of PC satisfied and exit if all OK
 		*parityCheckCount = ssum;
 		if ( ssum == NumberParityBits ) {
 			result = iter + 1;
 			break;
 		}
-
-
 	}
 
-	return(result);
+    if (verbose > 1) {
+	    may_printf(" %2d iterations", iter);
+    } else {
+        may_printf(" Took %d iterations\n", iter);
+    }
+
+    return(result);
 }
 
 

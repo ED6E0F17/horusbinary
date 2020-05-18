@@ -545,7 +545,7 @@ int main( int argc, char **argv ) {
 		Bytes = Message[0];
 		Message[0] = 0;
 		if ( Bytes ) {
-			if ((horus_mode == HORUS_MODE_RTTY) || (horus_mode == HORUS_MODE_PITS)) { /* UKHAS ASCII String */
+			if ((horus_mode == HORUS_MODE_RTTY) || (horus_mode == HORUS_MODE_PITS)) {	 /* UKHAS ASCII String */
 				char *Sentence = (char *)&Message[1];
 				Sentence[Bytes] = 0;
 				UpdatePayloadLOG( Sentence );
@@ -554,7 +554,7 @@ int main( int argc, char **argv ) {
 				// DoPositionCalcs();
 				ChannelPrintf( 3, 1, "RTTY Telemetry                " );
 				Config.TelemetryCount++;
-			} else if (horus_mode == HORUS_MODE_LDPC) {			/* Short 14 byte packet */
+			} else if (Bytes == 14) {							/* Short 14 byte packet */
 				struct SBinaryPacket BinaryPacket;
 				char Data[90], Sentence[100];
 				int position;
@@ -600,7 +600,7 @@ int main( int argc, char **argv ) {
 				DoPositionCalcs();
 				Config.TelemetryCount++;
 
-			} else {							/* Horus Binary 22 byte packet */
+			} else if (Bytes == 22) {							/* Horus Binary 22 byte packet */
 				struct TBinaryPacket BinaryPacket;
 				char Data[90], Sentence[100];
 

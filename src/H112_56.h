@@ -14,7 +14,7 @@
 #define MAX_COL_WEIGHT    3
 
 #define DEC_TYPE          0
-#define MAX_ITER         20
+#define MAX_ITER         100
 
 // Indexes: 56 bits * 6 deep
 const uint16_t H_rows[] = {

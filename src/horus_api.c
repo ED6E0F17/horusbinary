@@ -223,15 +223,14 @@ int horus_find_uw(struct horus *hstates, int n) {
         }
     }
 
+    if (mx < hstates->uw_thresh)
+	    return -1;
+
     if (hstates->verbose) {
-        fprintf(stderr, "  horus_find_uw: mx_ind: %d mx: %d uw_thresh: %d n: %d\n",  mx_ind, mx, hstates->uw_thresh, n);
+        fprintf(stderr, "  horus_find_uw: mx_ind: %d mx: %d uw_thresh: %d \n",  mx_ind, mx, hstates->uw_thresh);
     }
-    
-    if (mx >= hstates->uw_thresh) {
-        return mx_ind;
-    } else {
-        return -1;
-    }
+
+    return mx_ind;
 }
 
 int hex2int(char ch) {
@@ -359,7 +358,7 @@ int extract_horus_binary(struct horus *hstates, char hex_out[], int uw_loc, int 
     }
 
     if (hstates->verbose) {
-        fprintf(stderr, "  extract_horus_binary nout: %d\n  Received Packet before decoding:\n  ", nout);
+        fprintf(stderr, "  Extract bytes: %d,  Packet before decoding:\n  ", nout);
         for (b=0; b<nout; b++) {
             fprintf(stderr, "%02X", rxpacket[b]);
         }
@@ -369,24 +368,27 @@ int extract_horus_binary(struct horus *hstates, char hex_out[], int uw_loc, int 
     uint8_t payload_bytes[HORUS_MAX_PAYLOAD_BYTES + 4];
     if (payload_size == HORUS_BINARY_NUM_PAYLOAD_BYTES) {
         horus_l2_decode_rx_packet(payload_bytes, rxpacket, payload_size);
-    }else {
+    } else {
         float *softbits = hstates->soft_bits + uw_loc + sizeof(uw_horus_binary);
 	horus_ldpc_decode( payload_bytes, softbits );
 	ldpc_errors( payload_bytes, &rxpacket[4] );
 }
 
-    /* calculate checksum */
-    {
+	/* calculate checksum */
         uint16_t crc_tx, crc_rx;
         crc_rx = horus_l2_gen_crc16(payload_bytes, payload_size - 2);
         crc_tx = (uint16_t)payload_bytes[payload_size - 2] +
                 ((uint16_t)payload_bytes[payload_size - 1]<<8);
-        hstates->crc_ok = (crc_tx == crc_rx);
 
-        if (hstates->verbose) {
-            fprintf(stderr, "  extract_horus_binary crc_tx: %04X crc_rx: %04X\n", crc_tx, crc_rx);
-        }
-    }
+	/* Return early if CRC fails */
+	if (crc_tx == crc_rx) {
+		hstates->crc_ok = 1;
+	} else {
+		if (hstates->verbose) {
+			fprintf(stderr, "\tcrc_tx: %04X crc_rx: %04X\n", crc_tx, crc_rx);
+		}
+		return 0;
+	}
 
     /* convert to ASCII string of hex characters */
     hex_out[0] = 0;
@@ -397,11 +399,8 @@ int extract_horus_binary(struct horus *hstates, char hex_out[], int uw_loc, int 
     }
    
     if (hstates->verbose) {
-        fprintf(stderr, "  nout: %d Decoded Payload bytes:\n  %s\n", payload_size, hex_out);
+        fprintf(stderr, "  nout: %d, Payload bytes: %s\n", payload_size, hex_out);
     }
-
-    /* With noise input to FSK demod we can get occasinal UW matches,
-       so a good idea to only pass on any packets that pass CRC */
     
     if ( hstates->crc_ok) {
         hstates->total_payload_bits += payload_size;
@@ -449,8 +448,8 @@ int horus_demod_comp(struct horus *hstates, char ascii_out[], COMP demod_in_comp
     int rx_bits_len = hstates->rx_bits_len;
     
     if (hstates->verbose) {
-        fprintf(stderr, "  horus_rx max_packet_len: %d rx_bits_len: %d Nbits: %d nin: %d\n",
-                hstates->max_packet_len, rx_bits_len, Nbits, hstates->fsk->nin);
+    //    fprintf(stderr, "  horus_rx max_packet_len: %d rx_bits_len: %d Nbits: %d nin: %d\n",
+    //            hstates->max_packet_len, rx_bits_len, Nbits, hstates->fsk->nin);
     }
     
     /* shift buffer of bits to make room for new bits */
@@ -466,7 +465,7 @@ int horus_demod_comp(struct horus *hstates, char ascii_out[], COMP demod_in_comp
     if ((uw_loc = horus_find_uw(hstates, Nbits)) != -1) {
 
         if (hstates->verbose) {
-            fprintf(stderr, "  horus_rx uw_loc: %d mode: %d\n", uw_loc, hstates->mode);
+        //    fprintf(stderr, "  horus_rx uw_loc: %d mode: %d\n", uw_loc, hstates->mode);
         }
         
         /* OK we have found a unique word, and therefore the start of
@@ -482,15 +481,9 @@ int horus_demod_comp(struct horus *hstates, char ascii_out[], COMP demod_in_comp
 
         if (hstates->mode == HORUS_MODE_BINARY) {
             packet_detected = extract_horus_binary(hstates, ascii_out, uw_loc, HORUS_BINARY_NUM_PAYLOAD_BYTES);
-            //#define DUMP_BINARY_PACKET
-            #ifdef DUMP_BINARY_PACKET
-            FILE *f = fopen("packetbits.txt", "wt"); assert(f != NULL);
-            for(i=0; i<hstates->max_packet_len; i++) {
-                fprintf(f,"%d ", hstates->rx_bits[uw_loc+i]);
-            }
-            fclose(f);
-            exit(0);
-            #endif
+
+            if (!packet_detected) // second byte of the cherry
+		    packet_detected = extract_horus_binary(hstates, ascii_out, uw_loc, HORUS_BINARY_MIN_PAYLOAD_BYTES);
         }
 
         if (hstates->mode == HORUS_MODE_LDPC) {

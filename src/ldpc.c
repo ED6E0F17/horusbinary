@@ -132,7 +132,7 @@ void horus_ldpc_decode(uint8_t *payload, float *sd) {
 		x = fabs(sd[i]) / mean - 1.0;
 		sumsq += x * x;
 	}
-	estEsN0 =  2.0 * BITS_PER_PACKET / (sumsq + 1.0e-3) / mean;
+	estEsN0 = 1.0f * BITS_PER_PACKET / (sumsq + 1.0e-3) / mean;
 	for ( i = 0; i < BITS_PER_PACKET; i++ )
 		llr[i] = estEsN0 * sd[i];
 

@@ -1,5 +1,5 @@
 Tracker=YourName
-EnableHabitat=Y
+EnableHabitat=N
 
 Latitude=52.0
 Longitude=0.0
