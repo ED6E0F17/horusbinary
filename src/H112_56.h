@@ -3,7 +3,7 @@
 // Choose a value for interleaving:
 #define COPRIME          17
 
-#define BYTES_PER_PACKET 14
+#define DATA_BYTES       14
 #define PARITY_BYTES      7
 #define CODELENGTH      168
 

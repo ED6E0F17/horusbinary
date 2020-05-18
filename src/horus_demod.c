@@ -12,9 +12,9 @@
 
   Testing with a 8000Hz sample rate wave file:
 
-    $ sox ~/Desktop/horus.wav -r 12000 -t raw - | ./horus_demod -m RTTY -v - /dev/null
+    $ sox ~/Desktop/horus.wav -r 48000 -t raw - | ./horus_demod -m RTTY -v - /dev/null
 
-    $ sox ~/Desktop/4FSK_binary_100Rb_8khzfs.wav -r 12000 -t raw - | ./horus_demod -m binary  - -
+    $ sox ~/Desktop/4FSK_binary_100Rb_8khzfs.wav -r 48000 -t raw - | ./horus_demod -m binary  - -
 
 \*---------------------------------------------------------------------------*/
 
@@ -79,11 +79,11 @@ int main(int argc, char *argv[]) {
                 if ((strcmp(optarg, "BINARY") == 0) || (strcmp(optarg, "binary") == 0)) {
                     mode = HORUS_MODE_BINARY;
                 }
-                if ((strcmp(optarg, "SLOW") == 0) || (strcmp(optarg, "slow") == 0)) {
-                    mode = HORUS_MODE_SLOW;
+                if ((strcmp(optarg, "LDPC") == 0) || (strcmp(optarg, "ldpc") == 0)) {
+                    mode = HORUS_MODE_LDPC;
                 }
                 if (mode == -1) {
-                    fprintf(stderr, "use -m RTTY or --m binary  or -m slow\n");
+                    fprintf(stderr, "use -m RTTY or --m binary  or -m ldpc\n");
                     exit(1);
                 }
                 break;
@@ -124,11 +124,11 @@ int main(int argc, char *argv[]) {
     helpmsg:
         fprintf(stderr,"usage: %s -m RTTY|binary [-q] [-v] [-c] [-t [r]] InputModemRawFile OutputAsciiFile\n",argv[0]);
         fprintf(stderr,"\n");
-        fprintf(stderr,"InputModemRawFile      12 kHz 16 bit signed audio signal from radio\n");
-        fprintf(stderr,"                       Resample audio to 12kHz before sending to horus_demod\n");
-        fprintf(stderr," -m RTTY|binary|slow\n");
-        fprintf(stderr,"--mode=RTTY|binary     RTTY or binary Horus protcols\n");
-        fprintf(stderr,"--mode=slow            Low speed binary testing mode\n");
+        fprintf(stderr,"InputModemRawFile      48kHz 16bit signed audio signal from radio\n");
+        fprintf(stderr,"\n");
+        fprintf(stderr," -m rtty|binary|ldpc\n");
+        fprintf(stderr,"--mode=rtty|binary     RTTY or Binary Horus protcols\n");
+        fprintf(stderr,"--mode=ldpc            LDPC FEC testing mode\n");
         fprintf(stderr," -t[r] --stats=[r]     Print out modem statistics to stderr in JSON.\n");
         fprintf(stderr,"                       r, if provided, sets the number of modem frames\n"
                        "                       between statistic printouts\n");

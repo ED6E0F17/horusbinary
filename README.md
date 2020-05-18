@@ -26,8 +26,8 @@ Packets are then transmitted using **4FSK modulation**, at **100 baud**.
 
 A worked example for generating and encoding these packets is available in the [RS41HUP](https://github.com/darksidelemm/RS41HUP/blob/master/main.c#L401) repository.
 
-### Slow Horus Binary Packets
-Reduced Packets of 14 bytes are possible at 25 baud, for testing.
+### LDPC Horus Binary Packets
+Reduced Packets of 14 bytes are possible, for testing.
 
 ## Hardware Requirements
 The MFSK modes are narrow bandwidth, and can be received using a regular single-sideband (SSB) radio receiver. This could be a 'traditional' receiver (like a Icom IC-7000, Yaesu FT-817 to name but a few), or a software-defined radio receiver. The point is we need to receive the on-air signal (we usually transmit on 70cm) with an Upper-Sideband (USB) demodulator, and then get that audio into your computer.
@@ -74,11 +74,11 @@ Copy the example configuration file, i.e.:
 $ cp src/gateway.txt ./
 ```
 
-The file `gateway.txt` should then be modified with your info before use, and to select the mode ( 0:normal, or 1:ssdv ). 
+The file `gateway.txt` should then be modified with your info before use, and to select the mode ( 0:normal, 1:ldpc, 2:rtty100 3:rtty300 )
 
 
 ## Gateway Usage
-The `gateway` binary accepts 12khz 16-bit signed-integer samples via stdin, and can decode MFSK packets at 100 baud or 25 baud.
+The `gateway` binary accepts 48khz 16-bit signed-integer samples via stdin, and can decode MFSK packets at 100 baud.
 
 Suitable audio inputs could be from a sound card input, or from a SDR receiver application such as GQRX or rtl_fm).
 
@@ -86,14 +86,14 @@ We can string these applications together in the command shell using 'pipes', as
 
 ### Demodulating from a Sound Card
 ```
-$ sox -d -r 12k -c 1 -t s16 - | ./gateway
+$ sox -d -r 48k -c 1 -t s16 - | ./gateway
 ```
 The above command records from the default sound device.
 
 ### Demodulating using rtl_fm
 This assumes you want to use an rtl-sdr dongle on a headless Linux machine.
 ```
-rtl_fm -M raw -s 48000 -r 12000 -p 0 -f 434649000 | ./gateway -q
+rtl_fm -M raw -s 48000 -p 0 -f 434649000 | ./gateway -q
 ```
 Tune 1000 Hz below the expected lower frequency (i.e. 434.650 MHz - 1000 Hz = 434.649 MHz = 434649000 Hz, as above), and make sure that your dongle has a known ppm adjustment.
 

@@ -26,7 +26,7 @@ int max_demod_in = 0;
 /* It would be possible to run a single input through the decoder at two speeds */
 int horus_init( int mode ) {
 	if (mode == 1)
-		horus_mode = HORUS_MODE_SLOW;
+		horus_mode = HORUS_MODE_LDPC;
 	else if (mode == 2)
 		horus_mode = HORUS_MODE_RTTY;
 	else if (mode == 3)
@@ -106,15 +106,14 @@ int horus_loop( uint8_t *packet ) {
 	Config.Waterfall[f2 >> 2] = 94;
 	Config.Waterfall[WATERFALL_SHOW] = 0;
 	if((horus_mode == HORUS_MODE_RTTY) || (horus_mode == HORUS_MODE_PITS))
-
-		return len;
+		return len;	// 2 fsk
 
 	f3 = (uint8_t)(stats.f_est[2] / 37.0) - 25; // 1Kh - 6kHz in 133hz steps
 	f4 = (uint8_t)(stats.f_est[3] / 37.0) - 25; // (160 >> 2) = 40 char display
 	Config.Waterfall[f3 >> 2] = 94;
 	Config.Waterfall[f4 >> 2] = 94;
 	Config.Waterfall[WATERFALL_SHOW] = 0;
-	return len;
+	return len;		// 4 fsk
 }
 
 void LogMessage( const char *format, ... ) {
@@ -351,7 +350,7 @@ void LogConfigFile(void) {
 
 	char *modestring = "Horus Binary";
 	if (Config.Mode == 1)
-		modestring = "Horus Slow";
+		modestring = "Horus ldpc";
 	else if (Config.Mode == 2)
 		modestring = "RTTY100 7N2";
 	else if (Config.Mode == 3)
@@ -516,8 +515,8 @@ int main( int argc, char **argv ) {
 	default:
 	case 'h':
 		fprintf(stderr, "Horus Binary Gateway based on LoRa version.\n");
-		fprintf(stderr, "\tUsage: \"cat S16LE_12K.wav | gateway\"\n");
-		fprintf(stderr, "\t       \"  (resample audio to 12kHz)\"\n");
+		fprintf(stderr, "\tUsage: \"cat S16LE_48K.wav | gateway\"\n");
+		fprintf(stderr, "\t       \"  (resample audio to 48kHz)\"\n");
 		fprintf(stderr, "\tOption: [-q] uses stereo (iq) input.\n");
 		fprintf(stderr, "\tConfig: Edit \"gateway.txt\" file.\n\n");
 		exit(0);
@@ -531,7 +530,7 @@ int main( int argc, char **argv ) {
 	if (!horus_init(Config.Mode))
 		return -22;
 
-	fprintf(stderr, "Usage: \"cat S16LE_12K.wav | gateway\" (must use audio at 12kHz)\n");
+	fprintf(stderr, "Usage: \"cat S16LE_48K.wav | gateway\" (use audio at 48kHz)\n");
 	fprintf(stderr, "Press Control-C to Quit, if there is no input file.\n");
 	if (!getPacket())
 		exit(0);  // supplied file shorter than 1s ?
@@ -555,7 +554,7 @@ int main( int argc, char **argv ) {
 				// DoPositionCalcs();
 				ChannelPrintf( 3, 1, "RTTY Telemetry                " );
 				Config.TelemetryCount++;
-			} else if (horus_mode == HORUS_MODE_SLOW) {			/* Short 14 byte packet */
+			} else if (horus_mode == HORUS_MODE_LDPC) {			/* Short 14 byte packet */
 				struct SBinaryPacket BinaryPacket;
 				char Data[90], Sentence[100];
 				int position;
@@ -571,14 +570,14 @@ int main( int argc, char **argv ) {
 				minutes =  (Config.Seconds / 60) - (hours * 60);
 				seconds =  Config.Seconds - (hours * 3600) - (minutes * 60);
 
-				position = ((int)(int8_t)BinaryPacket.Latitude[2] << 16) |
-						((uint8_t)BinaryPacket.Latitude[1] << 8) |
-						((uint8_t)BinaryPacket.Latitude[2]);
-				Config.Latitude = (double)position * 256.0f * 1.0e-7;
-				position = ((int)(int8_t)BinaryPacket.Longitude[2] << 16) |
-						((uint8_t)BinaryPacket.Longitude[1] << 8) |
-						((uint8_t)BinaryPacket.Longitude[2]);
-				Config.Longitude = (double)position * 256.0 * 1.0e-7 ;
+				position = ((int)(int8_t)BinaryPacket.Latitude[2] << 24) |
+						((uint8_t)BinaryPacket.Latitude[1] <<16) |
+						((uint8_t)BinaryPacket.Latitude[0] << 8);
+				Config.Latitude = (double)position * 1.0e-7;
+				position = ((int)(int8_t)BinaryPacket.Longitude[2] << 24) |
+						((uint8_t)BinaryPacket.Longitude[1] <<16) |
+						((uint8_t)BinaryPacket.Longitude[0] << 8);
+				Config.Longitude = (double)position * 1.0e-7 ;
 				Config.Altitude = BinaryPacket.Altitude;
 				user = BinaryPacket.User;
 				sats = ((user >> 9) & 0x3) << 2; // 0,4,8,12

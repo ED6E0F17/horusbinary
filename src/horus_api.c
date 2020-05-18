@@ -35,24 +35,22 @@
 #include "fsk.h"
 #include "horus_l2.h"
 
-#define MAX_UW_LENGTH                 (5*8)
+#define MAX_UW_LENGTH                 (6*8)   /* With high FEC, (2^N) >> (N^BER)/BER! * BAUD */
 #define HORUS_API_VERSION                1    /* unique number that is bumped if API changes */
-#define HORUS_BINARY_NUM_BITS          376    /* Telemetry data (22 * 8 * 23/12 + 32)        */
+#define HORUS_BINARY_NUM_BITS          344    /* Telemetry data ( 22 * 8 * 23/12 == 43 * 8 ) */
 #define HORUS_BINARY_NUM_PAYLOAD_BYTES  22    /* fixed number of bytes in binary payload     */
 #define HORUS_BINARY_MIN_PAYLOAD_BYTES  14    /* compact binary payload                      */
 #define HORUS_MAX_PAYLOAD_BYTES         32    /* extended binary payload                     */
-#define HORUS_SLOW_NUM_BITS            168    /* Telemetry data ((14 + 7) * 8)   LDPC        */
-#define HORUS_SLOW_BYTES          (14 + 7)    /* Used for error checking.  TODO: remove this */
+#define HORUS_LDPC_NUM_BITS            168    /* Telemetry data ((14 + 7) * 8)   LDPC        */
 #define RTTY_MAX_CHARS			80    /* may not be enough, but more adds latency    */
-#define HORUS_BINARY_SAMPLERATE      12000    /* ** Reduced to support lower Symbol rates ** */
+#define HORUS_BINARY_SAMPLERATE      48000    /* Should not want to change this              */
 #define HORUS_BINARY_SYMBOLRATE        100
 #define HORUS_RTTY_SYMBOLRATE          100
 #define PITS_RTTY_SYMBOLRATE           300
-#define HORUS_SLOW_SYMBOLRATE           25    /* 25 Hz 4fsk QRP mode */
+#define HORUS_LDPC_SYMBOLRATE          100    /* Modem requires upgrade to handle 25 Hz    */
 #define HORUS_BINARY_TS              (HORUS_BINARY_SAMPLERATE / HORUS_BINARY_SYMBOLRATE)
 #define HORUS_BINARY_NIN_MAX         (HORUS_BINARY_SAMPLERATE + HORUS_BINARY_TS * 2)
-#define HORUS_MIN_SLOW_SPACING         100    /* minimum: 60Hz for rfm98, 270Hz for rs41   */
-#define HORUS_MAX_FREQUENCY           7000    /* Wider bandpass for higher speed modes     */
+#define HORUS_MAX_FREQUENCY           5000    /* Wider bandpass for higher speed modes     */
 #define RTTY_7N2			 1    /* RTTY select between between 8n1 and 7n2   */
 #define RTTY_8N2		       0,1    /* 8N2 has extra databit and second stop bit */
 
@@ -102,7 +100,7 @@ int8_t uw_horus_binary[] = {
 struct horus *horus_open (int mode) {
     int i;
     assert((mode == HORUS_MODE_RTTY) || (mode == HORUS_MODE_PITS)
-		    || (mode == HORUS_MODE_BINARY) || (mode == HORUS_MODE_SLOW));
+		    || (mode == HORUS_MODE_BINARY) || (mode == HORUS_MODE_LDPC));
 
     struct horus *hstates = (struct horus *)malloc(sizeof(struct horus));
     assert(hstates != NULL);
@@ -134,7 +132,7 @@ struct horus *horus_open (int mode) {
     }
     else if (mode == HORUS_MODE_BINARY) {
         hstates->mFSK = 4;
-        hstates->max_packet_len = HORUS_BINARY_NUM_BITS;
+        hstates->max_packet_len = HORUS_BINARY_NUM_BITS + MAX_UW_LENGTH;
         hstates->Rs = HORUS_BINARY_SYMBOLRATE;
 
         for (i=0; i<sizeof(uw_horus_binary); i++)
@@ -143,10 +141,10 @@ struct horus *horus_open (int mode) {
         hstates->uw_thresh = sizeof(uw_horus_binary) - 3*2; /* allow 3 bit errors in UW detection */
         horus_l2_init();
     }
-    else if (mode == HORUS_MODE_SLOW) {
+    else if (mode == HORUS_MODE_LDPC) {
         hstates->mFSK = 4;
-        hstates->max_packet_len = HORUS_SLOW_NUM_BITS;
-        hstates->Rs = HORUS_SLOW_SYMBOLRATE;
+        hstates->max_packet_len = HORUS_LDPC_NUM_BITS + MAX_UW_LENGTH;
+        hstates->Rs = HORUS_LDPC_SYMBOLRATE;
 
 	for (i=0; i<sizeof(uw_horus_binary); i++)
 		hstates->uw[i] = 2*uw_horus_binary[i] - 1;
@@ -157,8 +155,8 @@ struct horus *horus_open (int mode) {
 
     hstates->rx_bits_len = hstates->max_packet_len;
     hstates->fsk = fsk_create(hstates->Fs, hstates->Rs, hstates->mFSK, 1000, 2*hstates->Rs);
-    if (mode == HORUS_MODE_SLOW) {
-        hstates->fsk->est_space = HORUS_MIN_SLOW_SPACING;
+    if (mode == HORUS_MODE_LDPC) {
+        hstates->fsk->est_max = HORUS_MAX_FREQUENCY;
     }
 
     /* allocate enough room for one complete packet after the buffer that we search for a header  */
@@ -374,8 +372,8 @@ int extract_horus_binary(struct horus *hstates, char hex_out[], int uw_loc, int 
     }else {
         float *softbits = hstates->soft_bits + uw_loc + sizeof(uw_horus_binary);
 	horus_ldpc_decode( payload_bytes, softbits );
-	ldpc_errors( payload_bytes, &rxpacket[4], HORUS_SLOW_BYTES);
-    }
+	ldpc_errors( payload_bytes, &rxpacket[4] );
+}
 
     /* calculate checksum */
     {
@@ -495,7 +493,7 @@ int horus_demod_comp(struct horus *hstates, char ascii_out[], COMP demod_in_comp
             #endif
         }
 
-        if (hstates->mode == HORUS_MODE_SLOW) {
+        if (hstates->mode == HORUS_MODE_LDPC) {
             packet_detected = extract_horus_binary(hstates, ascii_out, uw_loc, HORUS_BINARY_MIN_PAYLOAD_BYTES);
 	    // else try MAX_PAYLOAD_BYTES for extended packet type
 	}
@@ -539,7 +537,7 @@ int horus_get_max_ascii_out_len(struct horus *hstates) {
         return RTTY_MAX_CHARS+1;
     if (hstates->mode == HORUS_MODE_BINARY)
         return 2*HORUS_BINARY_NUM_PAYLOAD_BYTES+1; /* HEX DUMP */
-    if (hstates->mode == HORUS_MODE_SLOW)
+    if (hstates->mode == HORUS_MODE_LDPC)
         return 2*HORUS_MAX_PAYLOAD_BYTES+1; /* HEX DUMP */
     assert(0); /* should never get here */
     return 0;

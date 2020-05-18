@@ -56,7 +56,6 @@
 #include "golay23.h"
 
 #define COPRIME 337  /*  Default Coprime for Horus Binary   */
-#define COPRIME2 17  /* For 168 bits we need something else */
 
 #ifdef HORUS_L2_UNITTEST
 #define HORUS_L2_RX
@@ -65,35 +64,25 @@
 /* Specification includes four preamble bytes, so we can add two of those to the legacy sync word */
 static char uw[] = {0x1b, 0x1b, '$','$'};
 
+/* Track errors as a percentage of the maximum useful: one bit in five  */
+static int static_errors = 100;
+int horus_quality(void) {
+	return 100 - static_errors;
+}
 
-/* Function Prototypes ------------------------------------------------*/
-
-#ifdef INTERLEAVER
-static void interleave(unsigned char *inout, int nbytes, int dir);
-#endif
-#ifdef SCRAMBLER
-static void scramble(unsigned char *inout, int nbytes);
-#endif
-
-/* Functions ----------------------------------------------------------*/
-
-/* Track errors as a percentage of the maximum: one bit in every byte */
-static int errors = 20;
-int horus_quality(void) {return 100 - 5 * errors;}
+// for Golay we just count corrected bytes, not individual bits
 void calc_errors( uint8_t *input, const uint8_t *output ) {
 	int i, s;
 	s = 0;
 	for (i = 0; i < 20; i++)
 		if (input[i] != output[i])
 			s++;
-	errors = s;
+	static_errors = s * 5;
 }
 
-/* Compare detected bits to corrected bits */
-void ldpc_errors( const uint8_t *packet, uint8_t *rx_bytes, int bytelength ) {
-	scramble(rx_bytes, bytelength);
-	interleave(rx_bytes, bytelength, COPRIME2);
-	calc_errors(rx_bytes, packet);
+// Import error count from LDPC decoder: true count of corrected bits
+void set_error_count(int percentage) {
+	static_errors = percentage;
 }
 
 /*
@@ -496,13 +485,7 @@ void interleave(unsigned char *inout, int nbytes, int dir)
     /* note: to work on small uCs (e.g. AVR) needed to declare specific words sizes */
     uint16_t nbits = (uint16_t)nbytes*8;
     uint32_t i, j, n, ibit, ibyte, ishift, jbyte, jshift;
-    uint32_t b;
     unsigned char out[nbytes];
-
-    if (dir > 1)
-	    b = COPRIME2;
-    else
-	    b = COPRIME;
 
     memset(out, 0, nbytes);
     for(n=0; n<nbits; n++) {
@@ -511,7 +494,7 @@ void interleave(unsigned char *inout, int nbytes, int dir)
           "On the Analysis and Design of Good Algebraic Interleavers", Xie et al,eq (5)
         */
         i = n;
-        j = (b*i) % nbits; /* note these all need to be 32-bit ints to make multiply work without overflow */
+        j = ( COPRIME * i ) % nbits;
         
         if (dir) {
             uint16_t tmp = j;
