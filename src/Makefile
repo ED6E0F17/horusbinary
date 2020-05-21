@@ -3,7 +3,7 @@ CC=gcc
 CFLAGS= -O3 -Wall
 CFLAGS+= -DHORUS_L2_RX -DINTERLEAVER -DSCRAMBLER -DRUN_TIME_TABLES
 
-all: clean horus_gateway horus_demod test
+all: clean horus_gateway horus_demod test makegrid
 
 horus_demod: horus_demod.o horus_api.o horus_l2.o golay23.o fsk.o kiss_fft.o ldpc.o mpdecode.o phi0.o
 	g++  -lm -o horus_demod horus_demod.o horus_api.o horus_l2.o golay23.o fsk.o kiss_fft.o ldpc.o mpdecode.o phi0.o
@@ -19,4 +19,6 @@ horus_gateway: gateway.o hiperfifo.o habitat.o utils.o horus_api.o horus_l2.o go
 test:  test.o global.h horus_api.o horus_l2.o golay23.o fsk.o kiss_fft.o mpdecode.o phi0.o
 	g++ -o test test.o horus_l2.o fsk.o golay23.o kiss_fft.o mpdecode.o phi0.o -lm
 
+makegrid: makegrid.o
+	g++ -o makegrid makegrid.o
 

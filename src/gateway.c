@@ -198,63 +198,6 @@ size_t write_data( void *buffer, size_t size, size_t nmemb, void *userp ) {
 	return size * nmemb;
 }
 
-unsigned queued_images = 0;
-char base64_ssdv[512 * 8];
-
-void UploadMultiImages() {
-	CURL *curl;
-	char single[1000];  // 256 * base64 + headers
-	char json[8000];  // 8 * single
-	unsigned PacketIndex;
-	char now[32];
-	time_t rawtime;
-	struct tm *tm;
-
-	if ( !queued_images ) {
-		return;
-	}
-	curl = curl_easy_init();
-	if ( !curl ) {
-		queued_images = 0;
-		return;
-	}
-
-	time( &rawtime );
-	tm = gmtime( &rawtime );
-	strftime( now, sizeof( now ), "%Y-%0m-%0dT%H:%M:%SZ", tm );
-
-	strcpy( json, "{\"type\": \"packets\",\"packets\":[" );
-	for ( PacketIndex = 0; PacketIndex < queued_images; PacketIndex++ ) {
-		snprintf( single, sizeof( single ),
-				  "{\"type\": \"packet\", \"packet\": \"%s\", \"encoding\": \"base64\", \"received\": \"%s\", \"receiver\": \"%s\"}%s",
-				  &base64_ssdv[PacketIndex * 512], now, Config.Tracker, ( queued_images - PacketIndex == 1 ) ? "" : "," );
-		strcat( json, single );
-	}
-	strcat( json, "]}" );
-
-	curl_easy_setopt( curl, CURLOPT_WRITEFUNCTION, write_data );
-	curl_easy_setopt( curl, CURLOPT_TIMEOUT, 40 );
-	curl_easy_setopt( curl, CURLOPT_NOSIGNAL, 1 );
-	curl_easy_setopt( curl, CURLOPT_FAILONERROR, 1 );
-	curl_easy_setopt( curl, CURLOPT_HTTPHEADER, slist_headers );
-	curl_easy_setopt( curl, CURLOPT_URL, "http://ssdv.habhub.org/api/v0/packets" );
-	curl_easy_setopt( curl, CURLOPT_CUSTOMREQUEST, "POST" );
-	curl_easy_setopt( curl, CURLOPT_COPYPOSTFIELDS, json );
-
-	curlQueue( curl );
-	queued_images = 0;
-}
-
-void UploadImagePacket( uint8_t *packet ) {
-	size_t base64_length;
-
-	base64_encode( packet, 256, &base64_length, &base64_ssdv[queued_images * 512] );
-	base64_ssdv[base64_length + queued_images * 512] = '\0';
-	if ( ++queued_images >= 8 ) {
-		UploadMultiImages();
-	}
-}
-
 void ReadString( FILE *fp, char *keyword, char *Result, int Length, int NeedValue ) {
 	char line[100], *token, *value;
 
@@ -472,24 +415,6 @@ uint16_t CRC16( char *ptr, size_t len ) {
 	return CRC;
 }
 
-void SaveImage(uint8_t *packet, char *callsign, uint8_t id) {
-	static int last_id = -1;
-	static uint16_t hash = 0;
-	FILE *imgfile;
-	char filename[24];
-
-	if (id != last_id) {
-		hash = (uint16_t)time(NULL);
-		last_id = id;
-	}
-	snprintf(filename, 24, "%s-%03d-%04x.ssdv", callsign, id, hash);
-	imgfile = fopen(filename,"a+");
-	if (imgfile) {
-		fwrite(packet, 1, 256, imgfile);
-		fclose(imgfile);
-	}
-}
-
 uint8_t Message[258];
 int getPacket() {
 	int result;
@@ -502,7 +427,6 @@ int getPacket() {
 
 int main( int argc, char **argv ) {
 	uint8_t Bytes;
-	uint32_t LoopCount;
 	WINDOW * mainwin;
 
 	int o = getopt(argc,argv,"hq");
@@ -522,9 +446,7 @@ int main( int argc, char **argv ) {
 		exit(0);
 	}
 
-	LoopCount = 0;
 	Message[0] = 0;
-
 	LoadConfigFile();
 
 	if (!horus_init(Config.Mode))
@@ -552,8 +474,8 @@ int main( int argc, char **argv ) {
 				LogMessage( "%s", Sentence );
 				UploadTelemetryPacket( Sentence );
 				// DoPositionCalcs();
-				ChannelPrintf( 3, 1, "RTTY Telemetry                " );
-				Config.TelemetryCount++;
+				ChannelPrintf( 3, 1, " RTTY  Telemetry                " );
+				Config.RTTYCount++;
 			} else if (Bytes == 14) {							/* Short 14 byte packet */
 				struct SBinaryPacket BinaryPacket;
 				char Data[90], Sentence[100];
@@ -561,7 +483,7 @@ int main( int argc, char **argv ) {
 			        unsigned hours, minutes, seconds;
 				int16_t user, temp, sats, volts;
 
-				ChannelPrintf( 3, 1, "Binary Telemetry              " );
+				ChannelPrintf( 3, 1, " LDPC  Telemetry              " );
 				memcpy( &BinaryPacket, &Message[1], sizeof( BinaryPacket ) );
 
 				strcpy( Config.Payload, Config.Payloads[0x1f & BinaryPacket.User] );
@@ -598,7 +520,7 @@ int main( int argc, char **argv ) {
 				UploadTelemetryPacket( Sentence );
 				UpdatePayloadLOG( Sentence );
 				DoPositionCalcs();
-				Config.TelemetryCount++;
+				Config.LDPCCount++;
 
 			} else if (Bytes == 22) {							/* Horus Binary 22 byte packet */
 				struct TBinaryPacket BinaryPacket;
@@ -641,7 +563,7 @@ int main( int argc, char **argv ) {
 
 					UploadTelemetryPacket( Sentence );
 					DoPositionCalcs();
-					Config.TelemetryCount++;
+					Config.BinaryCount++;
 #if 0
 					sprintf( Sentence + strlen( Sentence ),
 							 "\tStats:%1.1lf,%1.1lf,%d,%d\n",
@@ -654,36 +576,6 @@ int main( int argc, char **argv ) {
 					LogMessage( "%s", Sentence );
 				}
 			}
-
-// Could support SSDV for RTTY 300 baud
-#if 0
-			else if ( (Bytes == 255) && (Message[1] == 0x67) ) {		/* SSDV packet */
-				char Callsign[8];
-
-				decode_callsign( Callsign, &Message[2] );
-				Callsign[7] = 0;
-
-				// ImageNumber = Message[6];
-				// PacketNumber = Message[8];
-
-				LogMessage( "SSDV Packet, Callsign %s, Image %d, Packet %d\n",
-							Callsign, Message[6], Message[7] * 256 + Message[8] );
-
-				Message[0] = 0x55;             //  add SSDV sync byte at start of  packet
-				SaveImage(&Message[0], Callsign, Message[6]);
-				if ( Config.EnableSSDV ) {
-					UploadImagePacket( &Message[0] );
-				}
-				Message[0] = 0x00;             //  also used to flag length of next packet
-
-				ChannelPrintf( 3, 1, "SSDV Packet                   " );
-				Config.SSDVCount++;
-			} else
-			{
-				ChannelPrintf( 3, 1, "Bad Packet Type               " );
-				Config.UnknownCount++;
-			}
-#endif
 			Config.LastPacketAt = time( NULL );
 		}
 
@@ -699,27 +591,21 @@ int main( int argc, char **argv ) {
 			interval /= 60;
 			timescale = "m";
 		}
-		ChannelPrintf(  5, 1, "%u%s since last packet   ", interval, timescale );
-		ChannelPrintf(  6, 1, "Telem Packets: %d   ", Config.TelemetryCount );
-		ChannelPrintf(  7, 1, "Image Packets: %d   ", Config.SSDVCount );
+		ChannelPrintf(  4, 1, "%u%s since last packet   ", interval, timescale );
+		ChannelPrintf(  5, 1, " RTTY  Rx: %3d   ", Config.RTTYCount );
+		ChannelPrintf(  6, 1, "Binary Rx: %3d   ", Config.BinaryCount );
+		ChannelPrintf(  7, 1, " LDPC  Rx: %3d   ", Config.LDPCCount );
 		ChannelPrintf(  8, 1, "Bad CRC: %d, Quality: %d   ", horus_bad_crc(), horus_quality() );
 		ChannelPrintf(  9, 1, "Horus SNR: %4d   ", Config.snr );
 		ChannelPrintf(  10, 1, "Horus PPM: %4d   ", Config.ppm );
 		ChannelPrintf(  11, 1, "Frequency: %4d   ", Config.freq );
 		ChannelPrintf(  12, 1, "%s  ", Config.Waterfall );
-
-		if ( ++LoopCount > 15 ) {	// expect 7 raw image packets queued in 16 seconds
-			LoopCount = 0;
-			UploadMultiImages();	// Push packet onto curl queue
-			ChannelPrintf( 4, 1, "Uploads:%4d   ", curlUploads() );
-		}
 		ChannelRefresh();	// redraw ncurses display
 		curlPush();		// Upload now
 		usleep( 300 * 1000 );	// short delay in case reading from file
 	}
 
 	LogMessage("Shutting down.\n");
-	UploadMultiImages();	// Push packets onto curl queue
 	curlPush();		// Upload now
 	usleep( 1500 * 1000 );	// very short delay for uploads
 	CloseDisplay( mainwin );

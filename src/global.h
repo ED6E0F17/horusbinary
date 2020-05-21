@@ -38,8 +38,9 @@ struct TConfig
 
 	WINDOW *Window;
 
-	unsigned int TelemetryCount, SSDVCount, BadCRCCount, UnknownCount, SSDVMissing;
-	char Payload[16], Time[12];
+	unsigned int BinaryCount, LDPCCount, RTTYCount;
+	unsigned int BadCRCCount, UnknownCount;
+	char Payload[PAYLOAD_SIZE], Time[12];
 	uint32_t Counter, Seconds;
 	double Longitude, Latitude, Distance, Elevation;
 	unsigned int Altitude, PreviousAltitude, Satellites;
@@ -50,9 +51,6 @@ struct TConfig
 };
 extern struct TConfig Config;
 
-#define ID_LONG	32	/* 32 byte extended packet */
-#define ID_SSDV 0x67	/* 255 byte Image Packet */
-/* Payload ID less than 32 is a legacy name index */
 #pragma pack(push,1) 
 struct TBinaryPacket
 {

@@ -18,7 +18,7 @@
 #include "string.h"
 #include "mpdecode.h"
 #include "horus_l2.h"
-#include "H112_56.h"
+#include "HRA128_384.h"
 
 // Need a sensible prime number for interleaving, but using the same value
 // as Horus binary 22 byte golay code also works.... Check it is coprime!
@@ -188,7 +188,7 @@ int main(int argc, char **argv) {
 		unsigned int shift, j;
 
 		for(j = 0; j < MAX_ROW_WEIGHT; j++) {
-			uint16_t tmp  = H_rows[ j * PARITY_BYTES * 8  + i ] - 1;
+			uint16_t tmp  = H_rows[ j * NUMBERPARITYBITS  + i ] - 1;
 
 			shift = 7 - (tmp & 7); // MSB
 			last ^= input[tmp >> 3] >> shift;
