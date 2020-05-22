@@ -16,7 +16,7 @@
 #include "string.h"
 #include "mpdecode.h"
 #include "horus_l2.h"
-#include "H112_56.h"
+#include "HRA128_384.h"
 
 // Need a sensible prime number for interleaving, but using the same value
 // as Horus binary 22 byte golay code also works.... Check it is coprime!
