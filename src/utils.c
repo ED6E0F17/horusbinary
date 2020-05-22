@@ -157,6 +157,19 @@ char to_hex( char code ) {
 	return hex[code & 0x0f];
 }
 
+void gray2bin( uint8_t *pos, uint8_t len) {
+	int i,j,x,out;
+
+	for (i=0; i<len; i++) {
+		out = pos[i] & (1<<7);
+		for (j=0; j<7; j++) {
+			x = 7 - j - 1;
+			out |= (pos[i] ^ (out >> 1)) & (1<< x);
+		}
+		pos[i] = out;
+	}
+}
+
 #if 0
 /* Returns a url-encoded version of str */
 /* IMPORTANT: be sure to free() the returned string after use */

@@ -39,9 +39,9 @@
 #define HORUS_API_VERSION                1    /* unique number that is bumped if API changes */
 #define HORUS_BINARY_NUM_BITS          344    /* Telemetry data ( 22 * 8 * 23/12 == 43 * 8 ) */
 #define HORUS_BINARY_NUM_PAYLOAD_BYTES  22    /* fixed number of bytes in binary payload     */
-#define HORUS_BINARY_MIN_PAYLOAD_BYTES  14    /* compact binary payload                      */
+#define HORUS_BINARY_MIN_PAYLOAD_BYTES  16    /* compact binary payload                      */
 #define HORUS_MAX_PAYLOAD_BYTES         32    /* extended binary payload                     */
-#define HORUS_LDPC_NUM_BITS            168    /* Telemetry data ((14 + 7) * 8)   LDPC        */
+#define HORUS_LDPC_NUM_BITS            384    /* Telemetry data ((16 + 32) * 8)   LDPC        */
 #define RTTY_MAX_CHARS			80    /* may not be enough, but more adds latency    */
 #define HORUS_BINARY_SAMPLERATE      48000    /* Should not want to change this              */
 #define HORUS_BINARY_SYMBOLRATE        100
@@ -132,24 +132,26 @@ struct horus *horus_open (int mode) {
     }
     else if (mode == HORUS_MODE_BINARY) {
         hstates->mFSK = 4;
-        hstates->max_packet_len = HORUS_BINARY_NUM_BITS + MAX_UW_LENGTH;
+	/* Short LDPC packet is only 40 bits longer than Binary, so we allow that in Binary mode */
+        hstates->max_packet_len = HORUS_LDPC_NUM_BITS + MAX_UW_LENGTH;
         hstates->Rs = HORUS_BINARY_SYMBOLRATE;
 
         for (i=0; i<sizeof(uw_horus_binary); i++)
 		hstates->uw[i] = 2*uw_horus_binary[i] - 1;
         hstates->uw_len = sizeof(uw_horus_binary);
-        hstates->uw_thresh = sizeof(uw_horus_binary) - 3*2; /* allow 3 bit errors in UW detection */
+        hstates->uw_thresh = sizeof(uw_horus_binary) - 4*2; /* allow 4 bit errors in UW detection */
         horus_l2_init();
     }
     else if (mode == HORUS_MODE_LDPC) {
         hstates->mFSK = 4;
+	/* TODO: Allow 32 byte payloads in LDPC mode. */
         hstates->max_packet_len = HORUS_LDPC_NUM_BITS + MAX_UW_LENGTH;
         hstates->Rs = HORUS_LDPC_SYMBOLRATE;
 
 	for (i=0; i<sizeof(uw_horus_binary); i++)
 		hstates->uw[i] = 2*uw_horus_binary[i] - 1;
         hstates->uw_len = sizeof(uw_horus_binary);
-        hstates->uw_thresh = sizeof(uw_horus_binary) - 4*2; /* allow 4 bit errors in UW detection */
+        hstates->uw_thresh = sizeof(uw_horus_binary) - 5*2; /* allow 5 bit errors in UW detection */
         horus_l2_init();
     }
 

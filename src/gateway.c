@@ -476,17 +476,20 @@ int main( int argc, char **argv ) {
 				// DoPositionCalcs();
 				ChannelPrintf( 3, 1, " RTTY  Telemetry                " );
 				Config.RTTYCount++;
-			} else if (Bytes == 14) {							/* Short 14 byte packet */
+			} else if (Bytes == 16) {							/* Short 14 byte packet */
 				struct SBinaryPacket BinaryPacket;
 				char Data[90], Sentence[100];
 				int position;
 			        unsigned hours, minutes, seconds;
-				int16_t user, temp, sats, volts;
+				int16_t user, temp, sats;
+				float volts;
 
 				ChannelPrintf( 3, 1, " LDPC  Telemetry              " );
 				memcpy( &BinaryPacket, &Message[1], sizeof( BinaryPacket ) );
+				gray2bin( (uint8_t*)&BinaryPacket, sizeof BinaryPacket);
 
-				strcpy( Config.Payload, Config.Payloads[0x1f & BinaryPacket.User] );
+				strcpy( Config.Payload, Config.Payloads[0x1f & BinaryPacket.PayloadID] );
+				Config.Counter = BinaryPacket.Counter;
 				Config.Seconds = BinaryPacket.BiSeconds * 2;
 				hours =  (Config.Seconds / 3600);
 				minutes =  (Config.Seconds / 60) - (hours * 60);
@@ -502,17 +505,17 @@ int main( int argc, char **argv ) {
 				Config.Longitude = (double)position * 1.0e-7 ;
 				Config.Altitude = BinaryPacket.Altitude;
 				user = BinaryPacket.User;
-				sats = ((user >> 9) & 0x3) << 2; // 0,4,8,12
-				volts =((user >> 5) & 0xf) + 16; // 16 to 31
-				temp = (user >> 11) << 1;	 //-32 to 31
+				sats = (user & 0x3) << 2;	// 0,4,8,12
+				temp = (int8_t)user >> 2;	//-32 to 31
+				volts = 5.0f / 255.0f * (float)BinaryPacket.Voltage;
 
 				{ // - Assume that checksum was confirmed by demod stage (?)
-					snprintf( Data, 90, "%s,0,%02u:%02u:%02u,%1.5f,%1.5f,%u,0,%d,%d,%0.2f",
-							 Config.Payload, // counter,
+					snprintf( Data, 90, "%s,%d,%02u:%02u:%02u,%1.5f,%1.5f,%u,0,%d,%d,%0.2f",
+							 Config.Payload, Config.Counter,
 							 hours, minutes, seconds,
 							 Config.Latitude, Config.Longitude,
 							 Config.Altitude, //speed
-							 sats, temp, 0.1 * volts);
+							 sats, temp, volts);
 					snprintf( Sentence, 100, "$$%s*%04X\n", Data, CRC16( Data, strlen( Data ) ) );
 				}
 

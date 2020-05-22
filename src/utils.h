@@ -16,4 +16,5 @@ void sha256_init( SHA256_CTX *ctx );
 void sha256_transform( SHA256_CTX *ctx, uint8_t *data );
 void sha256_update( SHA256_CTX *ctx, uint8_t *data, uint32_t len );
 void sha256_final( SHA256_CTX *ctx, uint8_t *hash );
+void gray2bin( uint8_t *pos, uint8_t len);
 

@@ -69,20 +69,25 @@ uint8_t   BattVoltage;	// 0 = 0v, 255 = 5.0V, linear steps in-between.
 uint16_t  Checksum;	// Legacy CRC16-CCITT Checksum.
 };	// 22 byte legacy packet
 
-//uint16_t  User[3];	// Available for use.
-//uint32_t  NameID;	// six chars packed using SSDV method.
-	// options for 32 byte extended packet
-
 struct SBinaryPacket
+/* Short binary packet */
+// 4 byte preamble for high error rates ("ESC,ESC,$,$")
+// All data 8 bit Gray coded up to Checksum
+//	- to improve soft bit prediction
 {
-	uint16_t BiSeconds;	//2,2
-	uint8_t  Latitude[3];	//3,5
-	uint8_t  Longitude[3];	//3,8
-	uint16_t Altitude;	//2,10
-	int16_t  User;		//2,12
-	// Packed: 5bit ID | 4bit Volts*10 | 2bit Sats/4 | 5bit Temp/2
-	uint16_t Checksum;	//2,14
-};	// 14 byte compact packet
+uint8_t   PayloadID;	// Legacy list
+uint8_t   Counter;	// 8 bit counter
+uint16_t  BiSeconds;	// Time of day / 2
+uint8_t   Latitude[3];	// (int)(float * 1.0e7) / (1<<8)
+uint8_t   Longitude[3];	// ( better than 10m precision )
+uint16_t  Altitude;	// 0 - 65 km
+uint8_t   Voltage;	// scaled 5.0v in 255 range
+uint8_t   User;		// Temp / Sats
+	// Temperature	6 bits MSB => (+30 to -32)
+	// Satellites	2 bits LSB => 0,4,8,12 is good enough
+uint16_t  Checksum;	// CRC16-CCITT Checksum.
+};	// 16 data bytes, for (128,384) LDPC FEC
+	// => 52 bytes at 100Hz 4fsk => 2 seconds
 #pragma pack(pop)
 
 
