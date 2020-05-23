@@ -461,7 +461,7 @@ int horus_demod_comp(struct horus *hstates, char ascii_out[], COMP demod_in_comp
     }
 
     /* demodulate latest bits and get soft bits for ldpc */
-    fsk2_demod(hstates->fsk, &hstates->rx_bits[rx_bits_len-Nbits], &hstates->soft_bits[rx_bits_len-Nbits], demod_in_comp);
+    fsk_demod_core(hstates->fsk, &hstates->rx_bits[rx_bits_len-Nbits], &hstates->soft_bits[rx_bits_len-Nbits], demod_in_comp);
 
     /* UW search to see if we can find the start of a packet in the buffer */
     if ((uw_loc = horus_find_uw(hstates, Nbits)) != -1) {
