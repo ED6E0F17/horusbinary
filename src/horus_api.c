@@ -35,13 +35,13 @@
 #include "fsk.h"
 #include "horus_l2.h"
 
-#define MAX_UW_LENGTH                 (6*8)   /* With high FEC, (2^N) >> (N^BER)/BER! * BAUD */
+#define MAX_UW_LENGTH                 (5*8)   /* With high FEC, (2^N) >> (N^BER)/BER! * BAUD */
 #define HORUS_API_VERSION                1    /* unique number that is bumped if API changes */
 #define HORUS_BINARY_NUM_BITS          344    /* Telemetry data ( 22 * 8 * 23/12 == 43 * 8 ) */
 #define HORUS_BINARY_NUM_PAYLOAD_BYTES  22    /* fixed number of bytes in binary payload     */
 #define HORUS_BINARY_MIN_PAYLOAD_BYTES  16    /* compact binary payload                      */
 #define HORUS_MAX_PAYLOAD_BYTES         32    /* extended binary payload                     */
-#define HORUS_LDPC_NUM_BITS            384    /* Telemetry data ((16 + 32) * 8)   LDPC        */
+#define HORUS_LDPC_NUM_BITS           1024    /* LDPC Telemetry data ( MAX (32 + 96) * 8 )   */
 #define RTTY_MAX_CHARS			80    /* may not be enough, but more adds latency    */
 #define HORUS_BINARY_SAMPLERATE      48000    /* Should not want to change this              */
 #define HORUS_BINARY_SYMBOLRATE        100
@@ -50,7 +50,7 @@
 #define HORUS_LDPC_SYMBOLRATE          100    /* Modem requires upgrade to handle 25 Hz    */
 #define HORUS_BINARY_TS              (HORUS_BINARY_SAMPLERATE / HORUS_BINARY_SYMBOLRATE)
 #define HORUS_BINARY_NIN_MAX         (HORUS_BINARY_SAMPLERATE + HORUS_BINARY_TS * 2)
-#define HORUS_MAX_FREQUENCY           5000    /* Wider bandpass for higher speed modes     */
+#define HORUS_MAX_FREQUENCY           4000    /* Wider bandpass for higher speed modes     */
 #define RTTY_7N2			 1    /* RTTY select between between 8n1 and 7n2   */
 #define RTTY_8N2		       0,1    /* 8N2 has extra databit and second stop bit */
 
@@ -132,8 +132,8 @@ struct horus *horus_open (int mode) {
     }
     else if (mode == HORUS_MODE_BINARY) {
         hstates->mFSK = 4;
-	/* Short LDPC packet is only 40 bits longer than Binary, so we allow that in Binary mode */
-        hstates->max_packet_len = HORUS_LDPC_NUM_BITS + MAX_UW_LENGTH;
+	/* Short LDPC (128,256) packet is shorter than Binary, so we allow that in Binary mode */
+        hstates->max_packet_len = HORUS_BINARY_NUM_BITS + MAX_UW_LENGTH;
         hstates->Rs = HORUS_BINARY_SYMBOLRATE;
 
         for (i=0; i<sizeof(uw_horus_binary); i++)
@@ -144,7 +144,6 @@ struct horus *horus_open (int mode) {
     }
     else if (mode == HORUS_MODE_LDPC) {
         hstates->mFSK = 4;
-	/* TODO: Allow 32 byte payloads in LDPC mode. */
         hstates->max_packet_len = HORUS_LDPC_NUM_BITS + MAX_UW_LENGTH;
         hstates->Rs = HORUS_LDPC_SYMBOLRATE;
 
@@ -157,9 +156,7 @@ struct horus *horus_open (int mode) {
 
     hstates->rx_bits_len = hstates->max_packet_len;
     hstates->fsk = fsk_create(hstates->Fs, hstates->Rs, hstates->mFSK, 1000, 2*hstates->Rs);
-    if (mode == HORUS_MODE_LDPC) {
-        hstates->fsk->est_max = HORUS_MAX_FREQUENCY;
-    }
+    hstates->fsk->est_max = HORUS_MAX_FREQUENCY;
 
     /* allocate enough room for one complete packet after the buffer that we search for a header  */
     

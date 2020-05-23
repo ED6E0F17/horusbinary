@@ -152,6 +152,35 @@ int test(uint8_t *input, int punctures) {
 	return i;
 }
 
+/* 16 bit DVB additive scrambler as per Wikpedia example */
+void scramble(unsigned char *inout, int nbytes)
+{
+    int nbits = nbytes*8;
+    int i, ibit, ibits, ibyte, ishift, mask;
+    uint16_t scrambler = 0x4a80;  /* init additive scrambler at start of every frame */
+    uint16_t scrambler_out;
+
+    /* in place modification of each bit */
+    for(i=0; i<nbits; i++) {
+
+        scrambler_out = ((scrambler & 0x2) >> 1) ^ (scrambler & 0x1);
+
+        /* modify i-th bit by xor-ing with scrambler output sequence */
+        ibyte = i>>3;
+        ishift = i&7;
+        ibit = (inout[ibyte] >> ishift) & 0x1;
+        ibits = ibit ^ scrambler_out;                  // xor ibit with scrambler output
+
+        mask = 1 << ishift;
+        inout[ibyte] &= ~mask;                  // clear i-th bit
+        inout[ibyte] |= ibits << ishift;         // set to scrambled value
+
+        /* update scrambler */
+        scrambler >>= 1;
+        scrambler |= scrambler_out << 14;
+    }
+}
+
 int main(int argc, char **argv) {
 	uint8_t *pout;
 	uint8_t input[MYBYTES];
