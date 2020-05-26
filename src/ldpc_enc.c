@@ -78,7 +78,7 @@ int main(int argc, char *argv[])
 
     frames = 0;
     for (i=0; i<data_bits_per_frame; i++)
-    	ibits[i] = 0;
+	    ibits[i] = i&1;
     encode(&ldpc, ibits, pbits);  
  
     while (frames < Nframes) {{

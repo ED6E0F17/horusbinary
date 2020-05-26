@@ -69,7 +69,7 @@ int main(int argc, char *argv[])
     int         i, parityCheckCount;
     int         data_bits_per_frame;
     struct LDPC ldpc;
-    int         iter, total_iters, total_frames;
+    int         iter, total_iters, Frames, Ferrs;
     int         Tbits, Terrs, Tbits_raw, Terrs_raw;
 
 
@@ -96,12 +96,12 @@ int main(int argc, char *argv[])
     
     {
         FILE *fin = stdin;
-        int   nread;
+        int   noerrs, nread;
 
-        total_frames = 0;
+        Frames = Ferrs = 0;
 
  	for(i=0; i<data_bits_per_frame; i++)
-                ibits[i] = 0;
+                ibits[i] = i&1;
 	encode(&ldpc, ibits, pbits);  
  
         double input_double[CODELENGTH];
@@ -122,22 +122,24 @@ int main(int argc, char *argv[])
 		iter = run_ldpc_decoder(&ldpc, out_char, input_float, &parityCheckCount);
 
 	    total_iters += iter;
-            total_frames += 1;
+            Frames += 1;
 
             // fwrite(out_char, sizeof(char), data_bits_per_frame, fout);
-
+		noerrs = 0;
                 for (i=0; i<data_bits_per_frame; i++) {
                     if (out_char[i] != ibits[i]) {
                         Terrs++;
+			noerrs = 1;
                     }
                     Tbits++;
-                }
+		}
+		Ferrs += noerrs;
         }
     }
 
-    if (total_frames) {
-	fprintf(stderr, "Average iters: %d / %d\n", total_iters / total_frames, MAX_ITER);
-
+    if (Frames) {
+	fprintf(stderr, "Average iters: %d / %d\n", total_iters / Frames, MAX_ITER);
+	fprintf(stderr, "Frame errors: %0.2f %%\n", 100.0 * Ferrs / Frames);
         fprintf(stderr, "Raw: %d err: %d, BER: %4.3f\n", Tbits_raw, Terrs_raw,
                 (float)Terrs_raw/(Tbits_raw+1E-12));
         float coded_ber = (float)Terrs/(Tbits+1E-12);
