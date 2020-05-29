@@ -36,7 +36,7 @@ struct LDPC {
     const uint16_t *H_cols;
 };
 
-void encode(struct LDPC *ldpc, unsigned char ibits[], unsigned char pbits[]);
+void encode(struct LDPC *ldpc, const uint8_t ibits[], unsigned char pbits[]);
 
 int run_ldpc_decoder(struct LDPC *ldpc, uint8_t out_char[], float input[], int *parityCheckCount);
 

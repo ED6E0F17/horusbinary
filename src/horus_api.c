@@ -371,7 +371,7 @@ int extract_horus_binary(struct horus *hstates, char hex_out[], int uw_loc, int 
         float *softbits = hstates->soft_bits + uw_loc + sizeof(uw_horus_binary);
 	horus_ldpc_decode( payload_bytes, softbits );
 	ldpc_errors( payload_bytes, &rxpacket[4] );
-}
+    }
 
 	/* calculate checksum */
         uint16_t crc_tx, crc_rx;
@@ -480,14 +480,16 @@ int horus_demod_comp(struct horus *hstates, char ascii_out[], COMP demod_in_comp
 
         if (hstates->mode == HORUS_MODE_BINARY) {
             packet_detected = extract_horus_binary(hstates, ascii_out, uw_loc, HORUS_BINARY_NUM_PAYLOAD_BYTES);
-
-            if (!packet_detected) // second byte of the cherry
-		    packet_detected = extract_horus_binary(hstates, ascii_out, uw_loc, HORUS_BINARY_MIN_PAYLOAD_BYTES);
-        }
+	    if (!packet_detected) { // second byte of the cherry
+		packet_detected = extract_horus_binary(hstates, ascii_out, uw_loc, HORUS_BINARY_MIN_PAYLOAD_BYTES);
+		confirm_good(packet_detected);
+	    }
+	}
 
         if (hstates->mode == HORUS_MODE_LDPC) {
-            packet_detected = extract_horus_binary(hstates, ascii_out, uw_loc, HORUS_BINARY_MIN_PAYLOAD_BYTES);
-	    // else try MAX_PAYLOAD_BYTES for extended packet type
+		packet_detected = extract_horus_binary(hstates, ascii_out, uw_loc, HORUS_BINARY_MIN_PAYLOAD_BYTES);
+		confirm_good(packet_detected);
+	// else try MAX_PAYLOAD_BYTES for extended packet type
 	}
 	found_uw++;
     }

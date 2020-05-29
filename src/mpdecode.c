@@ -52,7 +52,7 @@ struct v_node {
 	struct v_sub_node *subs;
 };
 
-void encode(struct LDPC *ldpc, unsigned char ibits[], unsigned char pbits[]) {
+void encode(struct LDPC *ldpc, const uint8_t ibits[], unsigned char pbits[]) {
 	unsigned int p, i, tmp, par, prev = 0;
 	int ind;
 	const uint16_t *H_rows = ldpc->H_rows;

@@ -1,4 +1,4 @@
-/* 
+/*
   FILE...: ldpc_dec.c
   AUTHOR.: Matthew C. Valenti, Rohit Iyer Seshadri, David Rowe
   CREATED: Sep 2016
@@ -37,16 +37,18 @@
    change LDPC code regenerate this file. */
 #include "HRA128_384.h"
 
-int opt_exists(char *argv[], int argc, char opt[]) {
-    int i;
-    for (i=0; i<argc; i++) {
-        if (strcmp(argv[i], opt) == 0) {
-            return i;
-        }
-    }
-    return 0;
-}
+uint8_t *getGPS( void );
+void predict( float *softbits, uint8_t *last );
 
+int opt_exists( char *argv[], int argc, char opt[] ) {
+	int i;
+	for ( i = 0; i < argc; i++ ) {
+		if ( strcmp( argv[i], opt ) == 0 ) {
+			return i;
+		}
+	}
+	return 0;
+}
 
 /*
  * Pseudo-random number generator that we can implement in C with
@@ -54,99 +56,110 @@ int opt_exists(char *argv[], int argc, char opt[]) {
  * and 32767.  Used for generating test frames of various lengths.
  */
 
-void ofdm_rand(uint16_t r[], int n) {
-    uint64_t seed = 1;
-    int i;
+void ofdm_rand( uint16_t r[], int n ) {
+	uint64_t seed = 1;
+	int i;
 
-    for (i = 0; i < n; i++) {
-        seed = (1103515245l * seed + 12345) % 32768;
-        r[i] = seed;
-    }
+	for ( i = 0; i < n; i++ ) {
+		seed = ( 1103515245l * seed + 12345 ) % 32768;
+		r[i] = seed;
+	}
 }
 
-int main(int argc, char *argv[])
-{    
-    int         i, parityCheckCount;
-    int         data_bits_per_frame;
-    struct LDPC ldpc;
-    int         iter, total_iters, Frames, Ferrs;
-    int         Tbits, Terrs, Tbits_raw, Terrs_raw;
+int main( int argc, char *argv[] ) {
+	int i, parityCheckCount;
+	int data_bits_per_frame;
+	struct LDPC ldpc;
+	int iter, total_iters, Frames, Ferrs;
+	int Tbits, Terrs, Tbits_raw, Terrs_raw;
 
 
-    ldpc.max_iter = MAX_ITER;
-    ldpc.dec_type = 0;
-    ldpc.q_scale_factor = 1;
-    ldpc.r_scale_factor = 1;
-    ldpc.CodeLength = CODELENGTH;
-    ldpc.NumberParityBits = NUMBERPARITYBITS;
-    ldpc.NumberRowsHcols = NUMBERROWSHCOLS;
-    ldpc.max_row_weight = MAX_ROW_WEIGHT;
-    ldpc.max_col_weight = MAX_COL_WEIGHT;
-    ldpc.H_rows = H_rows;
-    ldpc.H_cols = H_cols;
+	ldpc.max_iter = MAX_ITER;
+	ldpc.dec_type = 0;
+	ldpc.q_scale_factor = 1;
+	ldpc.r_scale_factor = 1;
+	ldpc.CodeLength = CODELENGTH;
+	ldpc.NumberParityBits = NUMBERPARITYBITS;
+	ldpc.NumberRowsHcols = NUMBERROWSHCOLS;
+	ldpc.max_row_weight = MAX_ROW_WEIGHT;
+	ldpc.max_col_weight = MAX_COL_WEIGHT;
+	ldpc.H_rows = H_rows;
+	ldpc.H_cols = H_cols;
 
 
-    data_bits_per_frame = ldpc.NumberRowsHcols;
-    unsigned char ibits[CODELENGTH];
-    unsigned char *pbits = ibits + data_bits_per_frame;
-    uint8_t out_char[CODELENGTH];
+	data_bits_per_frame = ldpc.NumberRowsHcols;
+	const uint8_t *ibits;
+	unsigned char pbits[NUMBERPARITYBITS];
+	uint8_t out_char[CODELENGTH];
+	uint8_t history[data_bits_per_frame];
 
-    total_iters = 0;
-    Tbits = Terrs = Tbits_raw = Terrs_raw = 0;
-    
-    {
-        FILE *fin = stdin;
-        int   noerrs, nread;
+	total_iters = 0;
+	Tbits = Terrs = Tbits_raw = Terrs_raw = 0;
+	ibits = getGPS();
+	for ( i = 0; i < data_bits_per_frame; i++ )
+		history[i] = ibits[i];
 
-        Frames = Ferrs = 0;
+	{
+		FILE *fin = stdin;
+		int noerrs, nread;
+		double input_double[CODELENGTH];
+		float input_float[CODELENGTH];
 
- 	for(i=0; i<data_bits_per_frame; i++)
-                ibits[i] = i&1;
-	encode(&ldpc, ibits, pbits);  
- 
-        double input_double[CODELENGTH];
-        float  input_float[CODELENGTH];
+		Frames = Ferrs = 0;
+		nread = CODELENGTH;
+		while ( fread( input_double, sizeof( double ), nread, fin ) == nread ) {
+			char in_char;
 
-        nread = CODELENGTH;
-        while(fread(input_double, sizeof(double), nread, fin) == nread) {
-                    char in_char;
-                    for (i=0; i<CODELENGTH; i++) {
-                        in_char = input_double[i] < 0;
-                        if (in_char != ibits[i]) {
-                            Terrs_raw++;
-                        }
-                        Tbits_raw++;
-                    }
+			ibits = getGPS();
+			encode( &ldpc, ibits, pbits );
 
-		sd_to_llr(input_float, input_double, CODELENGTH);
-		iter = run_ldpc_decoder(&ldpc, out_char, input_float, &parityCheckCount);
+			for ( i = 0; i < data_bits_per_frame; i++ ) {
+				in_char = input_double[i] < 0;
+				if ( in_char != ibits[i] ) {
+					Terrs_raw++;
+				}
+				Tbits_raw++;
+			}
+			for ( i = 0; i < NUMBERPARITYBITS; i++ ) {
+				in_char = input_double[i + data_bits_per_frame] < 0;
+				if ( in_char != pbits[i] ) {
+					Terrs_raw++;
+				}
+				Tbits_raw++;
+			}
 
-	    total_iters += iter;
-            Frames += 1;
+			sd_to_llr( input_float, input_double, CODELENGTH );
+			predict( input_float, history );
+			iter = run_ldpc_decoder( &ldpc, out_char, input_float, &parityCheckCount );
 
-            // fwrite(out_char, sizeof(char), data_bits_per_frame, fout);
-		noerrs = 0;
-                for (i=0; i<data_bits_per_frame; i++) {
-                    if (out_char[i] != ibits[i]) {
-                        Terrs++;
-			noerrs = 1;
-                    }
-                    Tbits++;
+			total_iters += iter;
+			Frames += 1;
+
+			// fwrite(out_char, sizeof(char), data_bits_per_frame, fout);
+			noerrs = 0;
+			for ( i = 0; i < data_bits_per_frame; i++ ) {
+				if ( out_char[i] != ibits[i] ) {
+					Terrs++;
+					noerrs = 1;
+				}
+				Tbits++;
+			}
+			Ferrs += noerrs;
+			if ( !noerrs ) { // record data for predicting next packet
+				for ( i = 0; i < data_bits_per_frame; i++ )
+					history[i] = ibits[i];
+			}
 		}
-		Ferrs += noerrs;
-        }
-    }
+	}
 
-    if (Frames) {
-	fprintf(stderr, "Average iters: %d / %d\n", total_iters / Frames, MAX_ITER);
-	fprintf(stderr, "Frame errors: %0.2f %%\n", 100.0 * Ferrs / Frames);
-        fprintf(stderr, "Raw: %d err: %d, BER: %4.3f\n", Tbits_raw, Terrs_raw,
-                (float)Terrs_raw/(Tbits_raw+1E-12));
-        float coded_ber = (float)Terrs/(Tbits+1E-12);
-        fprintf(stderr, "Out: %d err: %d, BER: %4.3f\n", Tbits, Terrs, coded_ber);
+	if ( Frames ) {
+		fprintf( stderr, "Average iters: %d / %d\n", total_iters / Frames, MAX_ITER );
+		fprintf( stderr, "Frame errors: %0.2f %%\n", 100.0 * Ferrs / Frames );
+		fprintf( stderr, "Raw: %d err: %d, BER: %4.3f\n", Tbits_raw, Terrs_raw,
+				 (float)Terrs_raw / ( Tbits_raw + 1E-12 ) );
+		float coded_ber = (float)Terrs / ( Tbits + 1E-12 );
+		fprintf( stderr, "Out: %d err: %d, BER: %4.3f\n", Tbits, Terrs, coded_ber );
 
-    } 
-    return 0;
+	}
+	return 0;
 }
-
-

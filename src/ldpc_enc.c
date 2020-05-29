@@ -1,4 +1,4 @@
-/* 
+/*
   FILE...: ldpc_enc.c
   AUTHOR.: Bill Cowley, David Rowe
   CREATED: Sep 2016
@@ -18,14 +18,16 @@
 #include "mpdecode.h"
 #include "HRA128_384.h"
 
-int opt_exists(char *argv[], int argc, char opt[]) {
-    int i;
-    for (i=0; i<argc; i++) {
-        if (strcmp(argv[i], opt) == 0) {
-            return i;
-        }
-    }
-    return 0;
+const uint8_t *getGPS( void );
+
+int opt_exists( char *argv[], int argc, char opt[] ) {
+	int i;
+	for ( i = 0; i < argc; i++ ) {
+		if ( strcmp( argv[i], opt ) == 0 ) {
+			return i;
+		}
+	}
+	return 0;
 }
 
 /*
@@ -33,64 +35,61 @@ int opt_exists(char *argv[], int argc, char opt[]) {
  * identical results to Octave.  Returns an unsigned int between 0
  * and 32767.  Used for generating test frames of various lengths.
  */
-void ofdm_rand(uint16_t r[], int n) {
-    uint64_t seed = 1;
-    int i;
+void ofdm_rand( uint16_t r[], int n ) {
+	uint64_t seed = 1;
+	int i;
 
-    for (i = 0; i < n; i++) {
-        seed = (1103515245l * seed + 12345) % 32768;
-        r[i] = seed;
-    }
+	for ( i = 0; i < n; i++ ) {
+		seed = ( 1103515245l * seed + 12345 ) % 32768;
+		r[i] = seed;
+	}
 }
 
-int main(int argc, char *argv[])
-{
-    FILE         *fout;
-    int           i, arg, frames, Nframes, data_bits_per_frame, parity_bits_per_frame;
-    struct LDPC   ldpc;
-    
+int main( int argc, char *argv[] ) {
+	FILE         *fout;
+	int i, arg, frames, Nframes, data_bits_per_frame, parity_bits_per_frame;
+	struct LDPC ldpc;
 
-    /* set up LDPC code from include file constants */
 
-        ldpc.CodeLength = CODELENGTH;
-        ldpc.NumberParityBits = NUMBERPARITYBITS;
-        ldpc.NumberRowsHcols = NUMBERROWSHCOLS;
-        ldpc.max_row_weight = MAX_ROW_WEIGHT;
-        ldpc.max_col_weight = MAX_COL_WEIGHT;
-        ldpc.H_rows = H_rows;
-        ldpc.H_cols = H_cols;
+	/* set up LDPC code from include file constants */
 
-    data_bits_per_frame = ldpc.NumberRowsHcols;
-    parity_bits_per_frame = ldpc.NumberParityBits;
-    
-    unsigned char ibits[data_bits_per_frame];
-    unsigned char pbits[parity_bits_per_frame];
-    double        sdout[data_bits_per_frame+parity_bits_per_frame];
+	ldpc.CodeLength = CODELENGTH;
+	ldpc.NumberParityBits = NUMBERPARITYBITS;
+	ldpc.NumberRowsHcols = NUMBERROWSHCOLS;
+	ldpc.max_row_weight = MAX_ROW_WEIGHT;
+	ldpc.max_col_weight = MAX_COL_WEIGHT;
+	ldpc.H_rows = H_rows;
+	ldpc.H_cols = H_cols;
 
-	    
-    fout = stdout;
-    Nframes = 100;
+	data_bits_per_frame = ldpc.NumberRowsHcols;
+	parity_bits_per_frame = ldpc.NumberParityBits;
 
-    if ((arg = (opt_exists(argv, argc, "--testframes")))) {
-        Nframes = atoi(argv[arg+1]);
-        fprintf(stderr, "Nframes: %d\n", Nframes);
-    }
+	const uint8_t *ibits;
+	unsigned char pbits[parity_bits_per_frame];
+	double sdout[data_bits_per_frame + parity_bits_per_frame];
 
-    frames = 0;
-    for (i=0; i<data_bits_per_frame; i++)
-	    ibits[i] = i&1;
-    encode(&ldpc, ibits, pbits);  
- 
-    while (frames < Nframes) {{
-            /* map to BPSK symbols */
-            for (i=0; i<data_bits_per_frame; i++)
-                sdout[i] = 1.0 - 2.0 * ibits[i];
-            for (i=0; i<parity_bits_per_frame; i++)
-                sdout[i+data_bits_per_frame] = 1.0 - 2.0 * pbits[i];
-        }
-	fwrite(sdout, sizeof(double), data_bits_per_frame+parity_bits_per_frame, fout);
-        frames++;       
-    }
+	ibits = getGPS(); // keep sync with decoder
+	fout = stdout;
+	Nframes = 100;
 
-    return 0;
+	if ( ( arg = ( opt_exists( argv, argc, "--testframes" ) ) ) ) {
+		Nframes = atoi( argv[arg + 1] );
+		fprintf( stderr, "Nframes: %d\n", Nframes );
+	}
+
+	frames = 0;
+
+	while ( frames < Nframes ) {
+		ibits = getGPS();
+		encode( &ldpc, ibits, pbits );
+		/* map to BPSK symbols */
+		for ( i = 0; i < data_bits_per_frame; i++ )
+			sdout[i] = 1.0 - 2.0 * ibits[i];
+		for ( i = 0; i < parity_bits_per_frame; i++ )
+			sdout[i + data_bits_per_frame] = 1.0 - 2.0 * pbits[i];
+		fwrite( sdout, sizeof( double ), data_bits_per_frame + parity_bits_per_frame, fout );
+		frames++;
+	}
+
+	return 0;
 }

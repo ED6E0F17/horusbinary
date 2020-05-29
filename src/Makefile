@@ -3,7 +3,7 @@ CC=gcc
 CFLAGS= -O3 -Wall
 CFLAGS+= -DHORUS_L2_RX -DINTERLEAVER -DSCRAMBLER -DRUN_TIME_TABLES
 
-all:  clean horus_gateway horus_demod test_iter ldpc_enc ldpc_dec ldpc_noise ldpc_shrink
+all:   clean horus_gateway horus_demod test_iter ldpc_enc ldpc_dec ldpc_noise ldpc_shrink
 
 horus_demod: horus_demod.o horus_api.o horus_l2.o golay23.o fsk.o kiss_fft.o ldpc.o mpdecode.o phi0.o
 	g++  -lm -o horus_demod horus_demod.o horus_api.o horus_l2.o golay23.o fsk.o kiss_fft.o ldpc.o mpdecode.o phi0.o
@@ -19,11 +19,11 @@ horus_gateway: gateway.o hiperfifo.o habitat.o utils.o horus_api.o horus_l2.o go
 test_iter:  test_iter.o mpdecode.o phi0.o
 	g++ -o test_iter test_iter.o mpdecode.o phi0.o -lm
 
-ldpc_enc:  ldpc_enc.o mpdecode.o phi0.o
-	g++ -o ldpc_enc ldpc_enc.o mpdecode.o phi0.o -lm
+ldpc_enc:  ldpc_enc.o mpdecode.o phi0.o predict.o
+	g++ -o ldpc_enc ldpc_enc.o mpdecode.o phi0.o predict.o -lm
 
-ldpc_dec:  ldpc_dec.o mpdecode.o phi0.o
-	g++ -o ldpc_dec ldpc_dec.o mpdecode.o phi0.o -lm
+ldpc_dec:  ldpc_dec.o mpdecode.o phi0.o predict.o
+	g++ -o ldpc_dec ldpc_dec.o mpdecode.o phi0.o predict.o -lm
 
 ldpc_noise:  ldpc_noise.o
 	g++ -o ldpc_noise ldpc_noise.o -lm

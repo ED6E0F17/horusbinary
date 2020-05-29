@@ -33,5 +33,5 @@ void ldpc_errors(const uint8_t *packet, uint8_t *rx_bytes);
 void set_error_count(int percentage);
 void interleave(unsigned char *inout, int nbytes, int dir);
 void scramble(unsigned char *inout, int nbytes);
-
+void confirm_good(int ok);
 #endif

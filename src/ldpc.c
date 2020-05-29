@@ -112,6 +112,42 @@ void ldpc_errors( const uint8_t *outbytes, uint8_t *rx_bytes ) {
 	set_error_count( percentage );
 }
 
+#define PREDICTBYTES 14
+static uint8_t history[PREDICTBYTES * 8];
+static uint8_t future[PREDICTBYTES * 8];
+static int use_history = 0;
+int known[PREDICTBYTES] = {8, 7, 8,4, 8,8,3, 8,8,3, 8,3, 8, 8}; // Expected unchanged bits
+
+void confirm_good(int ok) {
+	int i;
+	if (ok) {
+		use_history = 5;
+		for ( i = 0; i < PREDICTBYTES*8; i++ )
+			history[i] = future[i];
+	} else {
+		if (use_history)
+			use_history--;
+	}
+}
+
+void predict(float *softbits) {
+	int i, j;
+	float data;
+	float weight; // predicted data
+
+	for (i=0; i < PREDICTBYTES ; i++) {
+		for (j = 0; j < known[i]; j++) {
+			data = 1.0f - 2.0f * history[i*8+j]; // bits are active low
+			weight = (known[i] + 12 - j) * 0.3f;
+			if ( softbits[i*8+j] * data > 0 )
+				softbits[i*8+j] *= weight;
+			else
+				softbits[i*8+j] /= weight * 2;
+		}
+	}
+}
+
+
 /* LDPC decode */
 void horus_ldpc_decode(uint8_t *payload, float *sd) {
 	float sum, mean, sumsq, estEsN0, x;
@@ -153,7 +189,11 @@ void horus_ldpc_decode(uint8_t *payload, float *sd) {
 	ldpc.H_rows = H_rows;
 	ldpc.H_cols = H_cols;
 
+	if (use_history)
+		predict(llr);
 	i = run_ldpc_decoder(&ldpc, outbits, llr, &parityCC);
+	for ( i = 0; i < PREDICTBYTES*8; i++ )
+		future[i] = outbits[i];
 
 	/* convert MSB bits to a packet of bytes */    
 	for (b = 0; b < DATA_BYTES + PARITY_BYTES; b++) {
