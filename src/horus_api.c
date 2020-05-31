@@ -35,13 +35,13 @@
 #include "fsk.h"
 #include "horus_l2.h"
 
-#define MAX_UW_LENGTH                 (5*8)   /* With high FEC, (2^N) >> (N^BER)/BER! * BAUD */
+#define MAX_UW_LENGTH                 (4*8)   /* With high FEC, (2^N) >> (N^BER)/BER! * BAUD */
 #define HORUS_API_VERSION                1    /* unique number that is bumped if API changes */
-#define HORUS_BINARY_NUM_BITS          344    /* Telemetry data ( 22 * 8 * 23/12 == 43 * 8 ) */
-#define HORUS_BINARY_NUM_PAYLOAD_BYTES  22    /* fixed number of bytes in binary payload     */
-#define HORUS_BINARY_MIN_PAYLOAD_BYTES  16    /* compact binary payload                      */
+#define HORUS_BINARY_NUM_BITS          368    /* 48 byte ldpc is longer than 43 byte legacy  */
+#define HORUS_BINARY_NUM_PAYLOAD_BYTES  22    /* fixed number of bytes in legacy payload     */
+#define HORUS_MIN_PAYLOAD_BYTES         16    /* compact binary payload                      */
 #define HORUS_MAX_PAYLOAD_BYTES         32    /* extended binary payload                     */
-#define HORUS_LDPC_NUM_BITS           1024    /* LDPC Telemetry data ( MAX (32 + 96) * 8 )   */
+#define HORUS_LDPC_NUM_BITS            768    /* Maximum LDPC Telemetry data (32 * 3 * 8)    */
 #define RTTY_MAX_CHARS			80    /* may not be enough, but more adds latency    */
 #define HORUS_BINARY_SAMPLERATE      48000    /* Should not want to change this              */
 #define HORUS_BINARY_SYMBOLRATE        100
@@ -50,7 +50,7 @@
 #define HORUS_LDPC_SYMBOLRATE          100    /* Modem requires upgrade to handle 25 Hz    */
 #define HORUS_BINARY_TS              (HORUS_BINARY_SAMPLERATE / HORUS_BINARY_SYMBOLRATE)
 #define HORUS_BINARY_NIN_MAX         (HORUS_BINARY_SAMPLERATE + HORUS_BINARY_TS * 2)
-#define HORUS_MAX_FREQUENCY           4000    /* Wider bandpass for higher speed modes     */
+#define HORUS_MAX_FREQUENCY           4000    /* Narrow bandpass for lower speed modes     */
 #define RTTY_7N2			 1    /* RTTY select between between 8n1 and 7n2   */
 #define RTTY_8N2		       0,1    /* 8N2 has extra databit and second stop bit */
 
@@ -62,8 +62,10 @@ struct horus {
     int         mFSK;                /* number of FSK tones                 */
     int         Rs;                  /* symbol rate in Hz                   */
     int         uw[MAX_UW_LENGTH];   /* unique word bits mapped to +/-1     */
+    int         uw2[MAX_UW_LENGTH];  /* secondary unique word for ldpc      */ 
     int         uw_thresh;           /* threshold for UW detection          */
     int         uw_len;              /* length of unique word               */
+    int         uw_type;	     /* for multiple uw checks, what found  */
     int         max_packet_len;      /* max length of a telemetry packet    */
     uint8_t    *rx_bits;             /* buffer of received bits             */
     float      *soft_bits;
@@ -89,13 +91,22 @@ int8_t uw_pits_rtty[] = {
 /* Unique word for Horus Binary (<ESC><ESC>$$)
    - Horus payload sends 4 <ESC> chars as a preamble */
 
-int8_t uw_horus_binary[] = {
+int8_t uw_horus_v1[] = {
     0,0,0,1,1,0,1,1,	// escape
     0,0,0,1,1,0,1,1,	// escape
     0,0,1,0,0,1,0,0,	// $
     0,0,1,0,0,1,0,0 	// $
 };
 
+/* New Unique word.
+ *  - only uses 2 symbols, so it should be easier to find on a waterfall */
+
+int8_t uw_horus_v2[] = {
+    1, 0, 0, 1, 0, 1, 1, 0,  // 0x96
+    0, 1, 1, 0, 1, 0, 0, 1,  // 0x69
+    0, 1, 1, 0, 1, 0, 0, 1,  // 0x69
+    1, 0, 0, 1, 0, 1, 1, 0   // 0x96
+};
 
 struct horus *horus_open (int mode) {
     int i;
@@ -110,13 +121,15 @@ struct horus *horus_open (int mode) {
     hstates->mode = mode;
 
     if (mode == HORUS_MODE_RTTY) {
-        hstates->mFSK = 2;
-        hstates->max_packet_len = RTTY_MAX_CHARS * 10;
+	hstates->mFSK = 2;
+	hstates->max_packet_len = RTTY_MAX_CHARS * 10;
 	hstates->Rs = HORUS_RTTY_SYMBOLRATE;
 
         /* map UW to make it easier to search for */
-        for (i=0; i<sizeof(uw_horus_rtty); i++)
+	for (i=0; i<sizeof(uw_horus_rtty); i++) {
 		hstates->uw[i] = 2*uw_horus_rtty[i] - 1;
+		hstates->uw2[i] = 0;
+	}
         hstates->uw_len = sizeof(uw_horus_rtty);
         hstates->uw_thresh = sizeof(uw_horus_rtty);	/* allow no bit errors in UW detection */
     }
@@ -125,33 +138,32 @@ struct horus *horus_open (int mode) {
         hstates->max_packet_len = RTTY_MAX_CHARS * 11;
 	hstates->Rs = PITS_RTTY_SYMBOLRATE;
 
-        for (i=0; i<sizeof(uw_pits_rtty); i++)
+        for (i=0; i<sizeof(uw_pits_rtty); i++) {
 		hstates->uw[i] = 2*uw_pits_rtty[i] - 1;
+		hstates->uw2[i] = 0;
+	}
         hstates->uw_len = sizeof(uw_pits_rtty);
         hstates->uw_thresh = sizeof(uw_pits_rtty);	/* allow no bit errors in UW detection */
     }
-    else if (mode == HORUS_MODE_BINARY) {
+    else { // ldpc or golay
         hstates->mFSK = 4;
-	/* Short LDPC (128,256) packet is shorter than Binary, so we allow that in Binary mode */
-        hstates->max_packet_len = HORUS_BINARY_NUM_BITS + MAX_UW_LENGTH;
-        hstates->Rs = HORUS_BINARY_SYMBOLRATE;
-
-        for (i=0; i<sizeof(uw_horus_binary); i++)
-		hstates->uw[i] = 2*uw_horus_binary[i] - 1;
-        hstates->uw_len = sizeof(uw_horus_binary);
-        hstates->uw_thresh = sizeof(uw_horus_binary) - 4*2; /* allow 4 bit errors in UW detection */
-        horus_l2_init();
-    }
-    else if (mode == HORUS_MODE_LDPC) {
-        hstates->mFSK = 4;
-        hstates->max_packet_len = HORUS_LDPC_NUM_BITS + MAX_UW_LENGTH;
-        hstates->Rs = HORUS_LDPC_SYMBOLRATE;
-
-	for (i=0; i<sizeof(uw_horus_binary); i++)
-		hstates->uw[i] = 2*uw_horus_binary[i] - 1;
-        hstates->uw_len = sizeof(uw_horus_binary);
-        hstates->uw_thresh = sizeof(uw_horus_binary) - 5*2; /* allow 5 bit errors in UW detection */
-        horus_l2_init();
+        for (i=0; i<sizeof(uw_horus_v1); i++)
+		hstates->uw[i] = 2*uw_horus_v1[i] - 1;
+        for (i=0; i<sizeof(uw_horus_v2); i++)
+		hstates->uw2[i] = 2*uw_horus_v2[i] - 1;
+        hstates->uw_len = sizeof(uw_horus_v2);
+ 
+	if (mode == HORUS_MODE_BINARY) {
+		/* Short LDPC (128,256) packet is shorter than Binary, so we allow that in Binary mode */
+		hstates->max_packet_len = HORUS_BINARY_NUM_BITS + MAX_UW_LENGTH;
+		hstates->Rs = HORUS_BINARY_SYMBOLRATE;
+		hstates->uw_thresh = sizeof(uw_horus_v1) - 4*2; /* allow 4 bit errors in UW detection */
+ 	} else { // HORUS_MODE_LDPC
+		hstates->max_packet_len = HORUS_LDPC_NUM_BITS + MAX_UW_LENGTH;
+		hstates->Rs = HORUS_LDPC_SYMBOLRATE;
+		hstates->uw_thresh = sizeof(uw_horus_v2) - 5*2; /* allow 5 bit errors in UW detection */
+	}
+	horus_l2_init();
     }
 
     hstates->rx_bits_len = hstates->max_packet_len;
@@ -192,33 +204,37 @@ uint32_t horus_nin(struct horus *hstates) {
     return nin;
 }
 
+/* How to check for two different unique words? */
 int horus_find_uw(struct horus *hstates, int n) {
-    int i, j, corr, mx, mx_ind;
+    int i, j, corr, corr2, mx, mx_ind;
     int rx_bits_mapped[n+hstates->uw_len];
     
     /* map rx_bits to +/-1 for UW search */
-
     for(i=0; i<n+hstates->uw_len; i++) {
         rx_bits_mapped[i] = 2*hstates->rx_bits[i] - 1;
     }
     
     /* look for UW  */
-
     mx = 0; mx_ind = 0;
     for(i=0; i<n; i++) {
 
         /* calculate correlation between bit stream and UW */
-        
-        corr = 0;
+        corr = corr2 = 0;
         for(j=0; j<hstates->uw_len; j++) {
-            corr += rx_bits_mapped[i+j]*hstates->uw[j]; // +/- 1
-        }
+            corr += rx_bits_mapped[i+j] * hstates->uw[j]; // +/- 1
+	    corr2 += rx_bits_mapped[i+j]* hstates->uw2[j];
+	}
         
         /* peak pick maximum */
-        
-        if (corr > mx) {
+        if (corr2 > mx) {
+            mx = corr2;
+            mx_ind = i;
+	    hstates->uw_type = 2;
+        }
+	if (corr > mx) {
             mx = corr;
             mx_ind = i;
+	    hstates->uw_type = 1;
         }
     }
 
@@ -368,7 +384,7 @@ int extract_horus_binary(struct horus *hstates, char hex_out[], int uw_loc, int 
     if (payload_size == HORUS_BINARY_NUM_PAYLOAD_BYTES) {
         horus_l2_decode_rx_packet(payload_bytes, rxpacket, payload_size);
     } else {
-        float *softbits = hstates->soft_bits + uw_loc + sizeof(uw_horus_binary);
+        float *softbits = hstates->soft_bits + uw_loc + sizeof(uw_horus_v2);
 	horus_ldpc_decode( payload_bytes, softbits );
 	ldpc_errors( payload_bytes, &rxpacket[4] );
     }
@@ -478,18 +494,19 @@ int horus_demod_comp(struct horus *hstates, char ascii_out[], COMP demod_in_comp
             packet_detected = extract_horus_rtty(hstates, ascii_out, uw_loc);
         }
 
-        if (hstates->mode == HORUS_MODE_BINARY) {
-            packet_detected = extract_horus_binary(hstates, ascii_out, uw_loc, HORUS_BINARY_NUM_PAYLOAD_BYTES);
-	    if (!packet_detected) { // second byte of the cherry
-		packet_detected = extract_horus_binary(hstates, ascii_out, uw_loc, HORUS_BINARY_MIN_PAYLOAD_BYTES);
-		confirm_good(packet_detected);
-	    }
+	if (hstates->mode == HORUS_MODE_BINARY) {
+		if (hstates->uw_type == 1) {
+			packet_detected = extract_horus_binary(hstates, ascii_out, uw_loc, HORUS_BINARY_NUM_PAYLOAD_BYTES);
+		} else {
+			packet_detected = extract_horus_binary(hstates, ascii_out, uw_loc, HORUS_MIN_PAYLOAD_BYTES);
+			confirm_good(packet_detected);
+		}
 	}
 
-        if (hstates->mode == HORUS_MODE_LDPC) {
-		packet_detected = extract_horus_binary(hstates, ascii_out, uw_loc, HORUS_BINARY_MIN_PAYLOAD_BYTES);
+        if ((hstates->mode == HORUS_MODE_LDPC) && (hstates->uw_type = 2)) {
+		packet_detected = extract_horus_binary(hstates, ascii_out, uw_loc, HORUS_MIN_PAYLOAD_BYTES);
 		confirm_good(packet_detected);
-	// else try MAX_PAYLOAD_BYTES for extended packet type
+		// else try MAX_PAYLOAD_BYTES for extended packet type
 	}
 	found_uw++;
     }
