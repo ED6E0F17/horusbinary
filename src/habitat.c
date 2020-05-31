@@ -51,13 +51,13 @@ void UploadTelemetryPacket( char *Telemetry ) {
 	curl = curl_easy_init();
 	if ( curl ) {
 		int length;
-		char url[200];
-		char base64_data[1000];
+		char url[150];
+		char base64_data[300];
 		size_t base64_length;
 		SHA256_CTX ctx;
 		unsigned char hash[32];
 		char doc_id[68];
-		char json[1200], now[32];
+		char json[500], now[32];
 		time_t rawtime;
 		struct tm *tm;
 

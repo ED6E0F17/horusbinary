@@ -84,7 +84,7 @@ inline static COMP cadd(COMP a, COMP b)
     return res;
 }
 
-inline static float cabsolute(COMP a)
+static float cabsolute(COMP a)
 {
     return sqrtf((a.real * a.real) + (a.imag * a.imag) );
 }
@@ -123,19 +123,20 @@ inline static COMP csub(COMP a, COMP b){
  * Compare the magnitude of a and b. if |a|>|b|, return true, otw false.
  * This needs no square roots
  */
-inline static int comp_mag_gt(COMP a,COMP b){
+static inline int comp_mag_gt(COMP a,COMP b){
     return ((a.real*a.real)+(a.imag*a.imag)) > ((b.real*b.real)+(b.imag*b.imag));
 }
 
 /*
  * Normalize a complex number's magnitude to 1
- */
-inline static COMP comp_normalize(COMP a){
-    COMP b;
-    float av = cabsolute(a);
-    b.real = a.real/av;
-    b.imag = a.imag/av;
-    return b;
+ * - always used inplace, so lock that in 
+ *   - gcc10 no likey static anaysis for some unknown
+*/
+#include <float.h>
+inline static void comp_normalize(COMP a){
+    float av = cabsolute(a) + FLT_MIN;
+    a.real = a.real/av;
+    a.imag = a.imag/av;
 }
 
 #endif

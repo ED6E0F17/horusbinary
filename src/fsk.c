@@ -301,7 +301,7 @@ void fsk_mod(struct FSK *fsk,float fsk_out[],uint8_t tx_bits[]){
     }
     
     /* Normalize TX phase to prevent drift */
-    tx_phase_c = comp_normalize(tx_phase_c);
+    comp_normalize(tx_phase_c);
     
     /* save TX phase */
     fsk->tx_phase_c = tx_phase_c;
@@ -355,7 +355,7 @@ void fsk_mod_c(struct FSK *fsk,COMP fsk_out[],uint8_t tx_bits[]){
     }
     
     /* Normalize TX phase to prevent drift */
-    tx_phase_c = comp_normalize(tx_phase_c);
+    comp_normalize(tx_phase_c);
     
     /* save TX phase */
     fsk->tx_phase_c = tx_phase_c;
@@ -648,7 +648,7 @@ void fsk_demod_core(struct FSK *fsk, uint8_t rx_bits[], float rx_sd[], COMP fsk_
             f_dc[m*Nmem+i] = cmult(fsk_in[j],cconj(phi_c[m]));
             //f_dc[m*Nmem+i] = cconj(phi_c[m]);
         }
-        phi_c[m] = comp_normalize(phi_c[m]);
+        comp_normalize(phi_c[m]);
         #ifdef MODEMPROBE_ENABLE
         snprintf(mp_name_tmp,NMP_NAME,"t_f%zd_dc",m+1);
         modem_probe_samp_c(mp_name_tmp,&f_dc[m*Nmem],Nmem);
