@@ -47,9 +47,10 @@
 #define HORUS_BINARY_SYMBOLRATE        100
 #define HORUS_RTTY_SYMBOLRATE          100
 #define PITS_RTTY_SYMBOLRATE           300
-#define HORUS_LDPC_SYMBOLRATE          100    /* Modem requires upgrade to handle 25 Hz    */
+#define HORUS_LDPC_SYMBOLRATE           25    /* Modem requires upgrade to handle 25 Hz    */
 #define HORUS_BINARY_TS              (HORUS_BINARY_SAMPLERATE / HORUS_BINARY_SYMBOLRATE)
-#define HORUS_BINARY_NIN_MAX         (HORUS_BINARY_SAMPLERATE + HORUS_BINARY_TS * 2)
+#define HORUS_BINARY_NIN_MAX         (HORUS_BINARY_TS * (FSK_DEFAULT_NSYM + 2))
+#define HORUS_LDPC_NIN_MAX           (HORUS_BINARY_NIN_MAX * 4)                   /* 25 Hz */
 #define HORUS_MAX_FREQUENCY           4000    /* Narrow bandpass for lower speed modes     */
 #define RTTY_7N2			 1    /* RTTY select between between 8n1 and 7n2   */
 #define RTTY_8N2		       0,1    /* 8N2 has extra databit and second stop bit */
@@ -171,14 +172,14 @@ struct horus *horus_open (int mode) {
     hstates->fsk->est_max = HORUS_MAX_FREQUENCY;
 
     /* allocate enough room for one complete packet after the buffer that we search for a header  */
-    
+
     hstates->rx_bits_len += hstates->fsk->Nbits;
-    hstates->rx_bits = (uint8_t*)malloc(hstates->rx_bits_len);
+    hstates->rx_bits = (uint8_t*)malloc(11 * hstates->rx_bits_len / 10);
     assert(hstates->rx_bits != NULL);
     for(i=0; i<hstates->rx_bits_len; i++) {
         hstates->rx_bits[i] = 0;
     }
-    hstates->soft_bits = (float*)malloc(sizeof(float) * hstates->rx_bits_len);
+    hstates->soft_bits = (float*)malloc(sizeof(float) * 11 * hstates->rx_bits_len / 10);
     assert(hstates->soft_bits != NULL);
     for(i=0; i<hstates->rx_bits_len; i++) {
         hstates->soft_bits[i] = 0.0;
@@ -425,7 +426,7 @@ int extract_horus_binary(struct horus *hstates, char hex_out[], int uw_loc, int 
 
 int horus_rx(struct horus *hstates, char ascii_out[], short demod_in[]) {
     int i;
-    COMP demod_in_comp[HORUS_BINARY_NIN_MAX];
+    COMP demod_in_comp[HORUS_LDPC_NIN_MAX];
 
     assert(hstates != NULL);
 
@@ -438,7 +439,7 @@ int horus_rx(struct horus *hstates, char ascii_out[], short demod_in[]) {
 
 int horus_rx_comp(struct horus *hstates, char ascii_out[], short demod_in_iq[]) {
     int i;
-    COMP demod_in_comp[HORUS_BINARY_NIN_MAX];
+    COMP demod_in_comp[HORUS_LDPC_NIN_MAX];
 
     assert(hstates != NULL);
 
@@ -506,7 +507,7 @@ int horus_demod_comp(struct horus *hstates, char ascii_out[], COMP demod_in_comp
         if ((hstates->mode == HORUS_MODE_LDPC) && (hstates->uw_type = 2)) {
 		packet_detected = extract_horus_binary(hstates, ascii_out, uw_loc, HORUS_MIN_PAYLOAD_BYTES);
 		confirm_good(packet_detected);
-		// else try MAX_PAYLOAD_BYTES for extended packet type
+		// TODO: try MAX_PAYLOAD_BYTES for extended packet type
 	}
 	found_uw++;
     }
@@ -536,8 +537,10 @@ int horus_get_mFSK(struct horus *hstates) {
 }
 
 int horus_get_max_demod_in(struct horus *hstates) {
-    /* sizeof(short) * (hstates->fsk->N + hstates->fsk->Ts*2) */
-    return HORUS_BINARY_NIN_MAX * sizeof(short);
+	if (hstates->mode == HORUS_MODE_LDPC)
+		return HORUS_LDPC_NIN_MAX * sizeof(short);
+	else
+		return HORUS_BINARY_NIN_MAX * sizeof(short);
 }
 
 int horus_get_max_ascii_out_len(struct horus *hstates) {

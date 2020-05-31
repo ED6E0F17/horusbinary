@@ -293,7 +293,7 @@ void LogConfigFile(void) {
 
 	char *modestring = "Horus Binary";
 	if (Config.Mode == 1)
-		modestring = "Horus ldpc";
+		modestring = "Horus 25Hz";
 	else if (Config.Mode == 2)
 		modestring = "RTTY100 7N2";
 	else if (Config.Mode == 3)
@@ -598,10 +598,10 @@ int main( int argc, char **argv ) {
 		ChannelPrintf(  5, 1, " RTTY  Rx: %3d   ", Config.RTTYCount );
 		ChannelPrintf(  6, 1, "Binary Rx: %3d   ", Config.BinaryCount );
 		ChannelPrintf(  7, 1, " LDPC  Rx: %3d   ", Config.LDPCCount );
-		ChannelPrintf(  8, 1, "Bad CRC: %d, Quality: %d   ", horus_bad_crc(), horus_quality() );
-		ChannelPrintf(  9, 1, "Horus SNR: %4d   ", Config.snr );
-		ChannelPrintf(  10, 1, "Horus PPM: %4d   ", Config.ppm );
-		ChannelPrintf(  11, 1, "Frequency: %4d   ", Config.freq );
+		ChannelPrintf(  8, 1, "Bad CRC: %3d, Quality: %d  ", horus_bad_crc(), horus_quality() );
+		ChannelPrintf(  9, 1, "Est.SNR: %3d, PPM: %d    ", Config.snr, Config.ppm );
+		ChannelPrintf(  10, 1, "Uploads: %3d     ", curlUploads() );
+		ChannelPrintf(  11, 1, "Frequency: %3d   ", Config.freq );
 		ChannelPrintf(  12, 1, "%s  ", Config.Waterfall );
 		ChannelRefresh();	// redraw ncurses display
 		curlPush();		// Upload now
