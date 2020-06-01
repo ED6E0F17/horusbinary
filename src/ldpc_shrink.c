@@ -23,12 +23,12 @@ void kfc_cleanup( void );
 #define PLEX kiss_fft_cpx
 #define IPLEX( X ) X.r
 #define QPLEX( X ) X.i
-#define QSIZE   2048        /* input size = 48kHz / 23Hz */
+#define QSIZE       2048        /* input size = 48kHz / 47 Hz */
 #define HSIZE   ( 2 * QSIZE )
 #define KSIZE   ( 4 * QSIZE )   /* FFT size  = input * 4     */
 #define HQSIZE  ( QSIZE / 2 )
 #define QQSIZE  ( QSIZE / 4 )   /* Output size = input / 4   */
-#define QQQSIZE ( QSIZE / 16 )  /* 128 entries for fading    */
+#define QQQSIZE ( QSIZE / 16 )  /* 64  entries for fading    */
 #define UNDOCUMENTED_SCALING    KSIZE
 
 /*
@@ -90,13 +90,13 @@ int main( int argc, char *argv[] ) {
 		kfc_fft( KSIZE, td4, fd4 );
 
 		// Decimate frequency bins
-		for ( i = 1,j = 1 + 3; i < QQSIZE / 2; i++,j += 4 ) { // Half QSIZE out is zeros, half mirrored, (*4 in KSIZE)
+		for ( i = 1,j = 1 + 3; i < QQSIZE / 2; i++,j += 3 ) { // Half QSIZE out is zeros, half mirrored, (*4 in KSIZE)
 			m = KSIZE - j; // input from larger FFT
 			n = QSIZE - i; // Downsample into smaller FFT
-			IPLEX( fd4[i] ) = IPLEX( fd4[j] ) + IPLEX( fd4[j + 1] ) + IPLEX( fd4[j + 2] ) + IPLEX( fd4[j + 3] );
-			QPLEX( fd4[i] ) = QPLEX( fd4[j] ) + QPLEX( fd4[j + 1] ) + QPLEX( fd4[j + 2] ) + QPLEX( fd4[j + 3] );
-			IPLEX( fd4[n] ) = IPLEX( fd4[m] ) + IPLEX( fd4[m + 1] ) + IPLEX( fd4[m + 2] ) + IPLEX( fd4[m + 3] );
-			QPLEX( fd4[n] ) = QPLEX( fd4[m] ) + QPLEX( fd4[m + 1] ) + QPLEX( fd4[m + 2] ) + QPLEX( fd4[m + 3] );
+			IPLEX( fd4[i] ) = 0.5 * IPLEX( fd4[j] ) + IPLEX( fd4[j + 1] ) + IPLEX( fd4[j + 2] ) + 0.5 * IPLEX( fd4[j + 3] );
+			QPLEX( fd4[i] ) = 0.5 * QPLEX( fd4[j] ) + QPLEX( fd4[j + 1] ) + QPLEX( fd4[j + 2] ) + 0.5 * QPLEX( fd4[j + 3] );
+			IPLEX( fd4[n] ) = 0.5 * IPLEX( fd4[m] ) + IPLEX( fd4[m + 1] ) + IPLEX( fd4[m + 2] ) + 0.5 * IPLEX( fd4[m + 3] );
+			QPLEX( fd4[n] ) = 0.5 * QPLEX( fd4[m] ) + QPLEX( fd4[m + 1] ) + QPLEX( fd4[m + 2] ) + 0.5 * QPLEX( fd4[m + 3] );
 		}
 		// filter out DC and  high frequencies
 		IPLEX( fd4[0] ) = 0.0f;

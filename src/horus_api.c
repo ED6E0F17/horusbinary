@@ -168,7 +168,7 @@ struct horus *horus_open (int mode) {
     }
 
     hstates->rx_bits_len = hstates->max_packet_len;
-    hstates->fsk = fsk_create(hstates->Fs, hstates->Rs, hstates->mFSK, 1000, 2*hstates->Rs);
+    hstates->fsk = fsk_create(hstates->Fs, hstates->Rs, hstates->mFSK, 1000, 1.2f*hstates->Rs);
     hstates->fsk->est_max = HORUS_MAX_FREQUENCY;
 
     /* allocate enough room for one complete packet after the buffer that we search for a header  */
@@ -475,7 +475,9 @@ int horus_demod_comp(struct horus *hstates, char ascii_out[], COMP demod_in_comp
     }
 
     /* demodulate latest bits and get soft bits for ldpc */
-    fsk_demod_core(hstates->fsk, &hstates->rx_bits[rx_bits_len-Nbits], &hstates->soft_bits[rx_bits_len-Nbits], demod_in_comp);
+    fsk2_demod(hstates->fsk, &hstates->rx_bits[rx_bits_len-Nbits], &hstates->soft_bits[rx_bits_len-Nbits], demod_in_comp);
+    // fsk_demod_core(hstates->fsk, &hstates->rx_bits[rx_bits_len-Nbits], &hstates->soft_bits[rx_bits_len-Nbits], demod_in_comp);
+
 
     /* UW search to see if we can find the start of a packet in the buffer */
     if ((uw_loc = horus_find_uw(hstates, Nbits)) != -1) {
