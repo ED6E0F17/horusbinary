@@ -37,7 +37,7 @@
 
 #define MAX_UW_LENGTH                 (4*8)   /* With high FEC, (2^N) >> (N^BER)/BER! * BAUD */
 #define HORUS_API_VERSION                1    /* unique number that is bumped if API changes */
-#define HORUS_BINARY_NUM_BITS          368    /* 48 byte ldpc is longer than 43 byte legacy  */
+#define HORUS_BINARY_NUM_BITS          384    /* 48 byte ldpc is longer than 43 byte legacy  */
 #define HORUS_BINARY_NUM_PAYLOAD_BYTES  22    /* fixed number of bytes in legacy payload     */
 #define HORUS_MIN_PAYLOAD_BYTES         16    /* compact binary payload                      */
 #define HORUS_MAX_PAYLOAD_BYTES         32    /* extended binary payload                     */

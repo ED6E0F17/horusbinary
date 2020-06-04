@@ -42,20 +42,11 @@
 /* At large sample rates, there's not enough stack space to run the demod */
 #define DEMOD_ALLOC_STACK
 
-/* This is a flag for the freq. estimator to use a precomputed/rt computed hann window table
+/* This is a flag for the freq. estimator to use a precomputed hann window table
    On platforms with slow cosf, this will produce a substantial speedup at the cost of a small
-    amount of memory
+    amount of memory - otherwise a rectangular window will be used 
 */
-//#define USE_HANN_TABLE
-
-/* This flag turns on run-time hann table generation. If USE_HANN_TABLE is unset,
-    this flag has no effect. If USE_HANN_TABLE is set and this flag is set, the
-    hann table will be allocated and generated when fsk_init or fsk_init_hbr is
-    called. If this flag is not set, a hann function table of size fsk->Ndft MUST
-    be provided. On small platforms, this can be used with a precomputed table to
-    save memory at the cost of flash space.
-*/
-#define GENERATE_HANN_TABLE_RUNTIME
+#define USE_HANN_TABLE
 
 /* Turn off table generation if on cortex M4 to save memory */
 #ifdef CORTEX_M4
@@ -86,32 +77,6 @@
 
 static void stats_init( struct FSK *fsk );
 
-#ifdef USE_HANN_TABLE
-/*
-   This is used by fsk_create and fsk_create_hbr to generate a hann function
-   table
-*/
-static void fsk_generate_hann_table( struct FSK* fsk ) {
-	int Ndft = fsk->Ndft;
-	size_t i;
-
-	/* Set up complex oscilator to calculate hann function */
-	COMP dphi = comp_exp_j( ( 2 * M_PI ) / ( (float)Ndft - 1 ) );
-	COMP rphi = {.5,0};
-
-	rphi = cmult( cconj( dphi ),rphi );
-
-	for ( i = 0; i < Ndft; i++ ) {
-		rphi = cmult( dphi,rphi );
-		float hannc = .5 - rphi.real;
-		//float hann = .5-(.5*cosf((2*M_PI*(float)(i))/((float)Ndft-1)));
-
-		fsk->hann_table[i] = hannc;
-	}
-}
-#endif
-
-
 
 /*---------------------------------------------------------------------------*\
 
@@ -124,7 +89,11 @@ static void fsk_generate_hann_table( struct FSK* fsk ) {
   for both mod and demod. returns NULL on failure.
 
 \*---------------------------------------------------------------------------*/
-
+#if 0
+// not currently used here
+//
+// Key difference: FFT Size is increased to useful maximum
+// TODO: compare performance
 struct FSK * fsk_create_hbr( int Fs, int Rs,int P,int M, int tx_f1, int tx_fs ) {
 	struct FSK *fsk;
 	int i;
@@ -217,22 +186,6 @@ struct FSK * fsk_create_hbr( int Fs, int Rs,int P,int M, int tx_f1, int tx_fs ) 
 		return NULL;
 	}
 
-	#ifdef USE_HANN_TABLE
-		#ifdef GENERATE_HANN_TABLE_RUNTIME
-	fsk->hann_table = (float*)malloc( sizeof( float ) * fsk->Ndft );
-	if ( fsk->hann_table == NULL ) {
-		free( fsk->fft_est );
-		free( fsk->samp_old );
-		free( fsk->fft_cfg );
-		free( fsk );
-		return NULL;
-	}
-	fsk_generate_hann_table( fsk );
-		#else
-	fsk->hann_table = NULL;
-		#endif
-	#endif
-
 	for ( i = 0; i < fsk->Ndft / 2; i++ ) fsk->fft_est[i] = 0;
 
 	fsk->norm_rx_timing = 0;
@@ -261,7 +214,7 @@ struct FSK * fsk_create_hbr( int Fs, int Rs,int P,int M, int tx_f1, int tx_fs ) 
 
 	return fsk;
 }
-
+#endif
 
 #define HORUS_MIN  600
 #define HORUS_MAX 2700
@@ -302,7 +255,7 @@ struct FSK * fsk_create( int Fs, int Rs,int M, int tx_f1, int tx_fs ) {
 		return NULL;
 	}
 
-	Ndft = 1024;
+	Ndft = 4096;
 
 	/* Set constant config parameters */
 	fsk->Fs = Fs;
@@ -356,21 +309,6 @@ struct FSK * fsk_create( int Fs, int Rs,int M, int tx_f1, int tx_fs ) {
 		return NULL;
 	}
 
-	#ifdef USE_HANN_TABLE
-		#ifdef GENERATE_HANN_TABLE_RUNTIME
-	fsk->hann_table = (float*)malloc( sizeof( float ) * fsk->Ndft );
-	if ( fsk->hann_table == NULL ) {
-		free( fsk->fft_est );
-		free( fsk->samp_old );
-		free( fsk->fft_cfg );
-		free( fsk );
-		return NULL;
-	}
-	fsk_generate_hann_table( fsk );
-		#else
-	fsk->hann_table = NULL;
-		#endif
-	#endif
 
 	for ( i = 0; i < Ndft / 2; i++ ) fsk->fft_est[i] = 0;
 
@@ -438,7 +376,8 @@ static void stats_init( struct FSK *fsk ) {
 
 }
 
-
+#if 0
+// burst mode not currently used here
 void fsk_set_nsym( struct FSK *fsk,int nsyms ) {
 	assert( nsyms > 0 );
 	int Ndft,i;
@@ -451,9 +390,9 @@ void fsk_set_nsym( struct FSK *fsk,int nsyms ) {
 	fsk->nin = fsk->N;
 	fsk->Nbits = fsk->mode == 2 ? fsk->Nsym : fsk->Nsym * 2;
 
-	/* Find smallest 2^N value that fits Fs for efficient FFT */
-	/* It would probably be better to use KISS-FFt's routine here */
-	for ( i = 1; i; i <<= 1 )
+	/* Find largest 2^N value that fits Fs for efficient FFT */
+	/* Up to a sensible size */
+	for ( i = 1; i < 9000; i <<= 1 )
 		if ( ( fsk->N ) & i ) {
 			Ndft = i;
 		}
@@ -477,6 +416,7 @@ void fsk_enable_burst_mode( struct FSK *fsk,int nsyms ) {
 	fsk->nin = fsk->N;
 	fsk->burst_mode = 1;
 }
+#endif
 
 void fsk_clear_estimators( struct FSK *fsk ) {
 	int i;
@@ -536,7 +476,7 @@ void fsk_set_est_limits( struct FSK *fsk,int est_min, int est_max ) {
 }
 
 /*
- * Internal function to estimate the frequencies of the two tones within a block of samples.
+ * Internal function to estimate the frequencies of the tones within a block of samples.
  * This is split off because it is fairly complicated, needs a bunch of memory, and probably
  * takes more cycles than the rest of the demod.
  * Parameters:
@@ -566,11 +506,8 @@ void fsk_demod_freq_est( struct FSK *fsk, COMP fsk_in[],float *freqs,int M ) {
 	kiss_fft_cpx *fftout = (kiss_fft_cpx*)malloc( sizeof( kiss_fft_cpx ) * Ndft );
 	#endif
 
-	#ifndef USE_HANN_TABLE
-	COMP dphi = comp_exp_j( ( 2 * M_PI ) / ( (float)Ndft - 1 ) );
-	COMP rphi = {.5,0};
-	rphi = cmult( cconj( dphi ),rphi );
-	#endif
+	if (!fftin || !fftout)
+		goto cannot_fail;
 
 	f_min  = ( fsk->est_min * Ndft ) / Fs;
 	f_max  = ( fsk->est_max * Ndft ) / Fs;
@@ -581,19 +518,27 @@ void fsk_demod_freq_est( struct FSK *fsk, COMP fsk_in[],float *freqs,int M ) {
 
 	int samps;
 	int fft_samps;
-	int fft_loops = nin / Ndft;
+	int fft_loops = nin / Ndft + 1; // rounded up
 
+
+	// Default Nin is about half a second, or 24 loops
 	for ( j = 0; j < fft_loops; j++ ) {
 		/* 48000 sample rate (for example) will have a spare */
 		/* 896 samples besides the 46 "Ndft" samples, so adjust */
 
-		samps = ( nin - ( ( j + 1 ) * Ndft ) );
+		samps = nin - j * Ndft;
 		fft_samps = ( samps >= Ndft ) ? Ndft : samps;
 
 		/* Copy FSK buffer into reals of FFT buffer and apply a hann window */
 		for ( i = 0; i < fft_samps; i++ ) {
+#ifdef USE_HANN_TABLE
+			float hann = sinf( M_PI * (float)(i) / (float)(fft_samps-1) );
+			fftin[i].r = hann * fsk_in[i + Ndft * j].real;
+			fftin[i].i = hann * fsk_in[i + Ndft * j].imag;
+#else
 			fftin[i].r = fsk_in[i + Ndft * j].real;
 			fftin[i].i = fsk_in[i + Ndft * j].imag;
+#endif
 		}
 
 		/* Zero out the remaining slots on spare samples */
@@ -673,10 +618,13 @@ void fsk_demod_freq_est( struct FSK *fsk, COMP fsk_in[],float *freqs,int M ) {
 	for ( i = 0; i < M; i++ ) {
 		freqs[i] = (float)( freqi[i] ) * ( (float)Fs / (float)Ndft );
 	}
+
+cannot_fail:
 	#ifndef DEMOD_ALLOC_STACK
 	free( fftin );
 	free( fftout );
 	#endif
+	return;
 }
 
 void fsk2_demod( struct FSK *fsk, uint8_t rx_bits[], float rx_sd[], COMP fsk_in[] ) {
