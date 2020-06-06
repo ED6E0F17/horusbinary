@@ -95,7 +95,7 @@ int horus_loop( uint8_t *packet ) {
 	horus_get_modem_extended_stats( hstates, &stats );
 
 	Config.freq = (int)(-0.1 * stats.foff) * 10;
-	Config.snr = (int)stats.snr_est;
+	Config.snr = (int)stats.snr_est - 10; // random scaling
         Config.ppm = (int)stats.clock_offset;
 
 	for (i=0; i < WATERFALL_SIZE; i++)
@@ -605,7 +605,7 @@ int main( int argc, char **argv ) {
 		ChannelPrintf(  12, 1, "%s  ", Config.Waterfall );
 		ChannelRefresh();	// redraw ncurses display
 		curlPush();		// Upload now
-		usleep( 300 * 1000 );	// short delay in case reading from file
+		usleep( 200 * 1000 );	// short delay in case reading from file
 	}
 
 	LogMessage("Shutting down.\n");

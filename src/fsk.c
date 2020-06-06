@@ -217,7 +217,7 @@ struct FSK * fsk_create_hbr( int Fs, int Rs,int P,int M, int tx_f1, int tx_fs ) 
 #endif
 
 #define HORUS_MIN  600
-#define HORUS_MAX 2700
+#define HORUS_MAX 4000
 #define HORUS_MIN_SPACING 100
 
 /*---------------------------------------------------------------------------*\
@@ -261,10 +261,10 @@ struct FSK * fsk_create( int Fs, int Rs,int M, int tx_f1, int tx_fs ) {
 	fsk->Fs = Fs;
 	fsk->Rs = Rs;
 	fsk->Ts = Fs / Rs;
-	fsk->N = Fs;
 	fsk->burst_mode = 0;
 	fsk->P = horus_P;
-	fsk->Nsym = fsk->N / fsk->Ts;
+	fsk->Nsym = FSK_DEFAULT_NSYM;
+	fsk->N = fsk->Nsym * fsk->Ts;
 	fsk->Ndft = Ndft;
 	fsk->Nmem = fsk->N + ( 2 * fsk->Ts );
 	fsk->f1_tx = tx_f1;
@@ -475,6 +475,66 @@ void fsk_set_est_limits( struct FSK *fsk,int est_min, int est_max ) {
 	fsk->est_max = est_max;
 }
 
+float add4bins(kiss_fft_cpx *fftout, int i, int j) {
+	return fftout[i].i + fftout[i+1].i + fftout[j].i + fftout[j+1].i;
+}
+
+int bestof2bins(kiss_fft_cpx *fftout, int i) {
+	if (fftout[i].i > fftout[i+1].i)
+		return i;
+	else
+		return i + 1;
+}
+
+
+
+/*
+ * Comb Filter - we need to track 4 equispaced frequencies that are each 3db below the noise
+ * This is, of course, impossible.
+ * Known targets are RS41 (530Hz/2) or RFM9x (550Hz/3), so we look for 2 "peaks" 540Hz apart.
+ * Working back from there to find 4fsk with 183 or  267 Hz shift.
+ */
+void comb_filter(struct FSK *fsk, int *freqi, kiss_fft_cpx *fftout) {
+	int Ndft, j, step, centre;
+	float peak, max;
+
+	Ndft = fsk->Ndft;
+	step = 540 * Ndft / fsk->Fs; // 540/(48000/4096) => 46.1
+
+	max = 0;
+	centre = step;
+	for ( j = step; j < Ndft / 4; j++ ) {
+		peak = add4bins(fftout, j, j+step);
+		if ( peak > max ) {
+			max = peak;
+			freqi[0] = bestof2bins(fftout, j);
+			freqi[1] = bestof2bins(fftout, j + step);
+			centre = j + (step + 1)/ 2;
+		}
+	}
+
+	// Three options, RS41 left or right, or RFM9x between
+	peak = add4bins(fftout, centre, centre - step);
+		max = peak;
+		freqi[2] = bestof2bins(fftout, centre - step);
+		freqi[3] = bestof2bins(fftout, centre);
+
+	peak = add4bins(fftout, centre, centre + step);
+	if (peak > max) {
+		max = peak;
+		freqi[2] = bestof2bins(fftout, centre);
+		freqi[3] = bestof2bins(fftout, centre + step);
+	}
+
+	step = (step + 2) / 6;		// 48/6 => 8 => 94 Hz
+	peak = add4bins(fftout, centre + step, centre - step);
+	if (peak > max) {
+		freqi[2] = bestof2bins(fftout, centre - step);
+		freqi[3] = bestof2bins(fftout, centre + step);
+	}
+}
+
+
 /*
  * Internal function to estimate the frequencies of the tones within a block of samples.
  * This is split off because it is fairly complicated, needs a bunch of memory, and probably
@@ -513,18 +573,16 @@ void fsk_demod_freq_est( struct FSK *fsk, COMP fsk_in[],float *freqs,int M ) {
 	f_max  = ( fsk->est_max * Ndft ) / Fs;
 	f_zero = ( fsk->est_space * Ndft ) / Fs;
 
-	/* scale averaging time constant based on number of samples */
-	tc = 0.95 * Ndft / Fs;
+	/* We could reduce the integration period for strong signals, and extend it otherwise */
+	tc = 0.03;
 
 	int samps;
 	int fft_samps;
 	int fft_loops = nin / Ndft + 1; // rounded up
 
 
-	// Default Nin is about half a second, or 24 loops
+	// Default Nin is about half a second, or 6 loops of 48kHz / 4096 FFT
 	for ( j = 0; j < fft_loops; j++ ) {
-		/* 48000 sample rate (for example) will have a spare */
-		/* 896 samples besides the 46 "Ndft" samples, so adjust */
 
 		samps = nin - j * Ndft;
 		fft_samps = ( samps >= Ndft ) ? Ndft : samps;
@@ -575,9 +633,11 @@ void fsk_demod_freq_est( struct FSK *fsk, COMP fsk_in[],float *freqs,int M ) {
 
 	modem_probe_samp_f( "t_fft_est",fsk->fft_est,Ndft / 2 );
 
-	max = 0;
+	if ( M == 4) {
+		comb_filter(fsk, freqi, fftout);
+
 	/* Find the M frequency peaks here */
-	for ( i = 0; i < M; i++ ) {
+	} else for ( i = 0; i < M; i++ ) {
 		imax = 0;
 		max = 0;
 		for ( j = 0; j < Ndft / 2; j++ ) {
@@ -628,7 +688,6 @@ cannot_fail:
 }
 
 void fsk2_demod( struct FSK *fsk, uint8_t rx_bits[], float rx_sd[], COMP fsk_in[] ) {
-	int N = fsk->N;
 	int Ts = fsk->Ts;
 	int Rs = fsk->Rs;
 	int Fs = fsk->Fs;
@@ -847,20 +906,20 @@ void fsk2_demod( struct FSK *fsk, uint8_t rx_bits[], float rx_sd[], COMP fsk_in[
 		appm = 1e6 * d_norm_rx_timing / (float)nsym;
 		fsk->ppm = .9 * fsk->ppm + .1 * appm;
 	}
-
+#if 1
 	/* Figure out how many samples are needed the next modem cycle */
 	/* Unless we're in burst mode */
 	if ( !fsk->burst_mode ) {
 		/* Used to define HORUS_BINARY_MAX_NIN, change with caution */
 		if ( norm_rx_timing > 0.25 ) {
-			fsk->nin = N + Ts / 2;
+			fsk->nin = fsk->N + Ts / 2;
 		} else if ( norm_rx_timing < -0.25 ) {
-			fsk->nin = N - Ts / 2;
+			fsk->nin = fsk->N - Ts / 2;
 		} else {
-			fsk->nin = N;
+			fsk->nin = fsk->N;
 		}
 	}
-
+#endif
 	modem_probe_samp_f( "t_norm_rx_timing",&( norm_rx_timing ),1 );
 	modem_probe_samp_i( "t_nin",&( fsk->nin ),1 );
 

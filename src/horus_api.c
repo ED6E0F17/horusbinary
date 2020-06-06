@@ -40,8 +40,8 @@
 #define HORUS_BINARY_NUM_BITS          384    /* 48 byte ldpc is longer than 43 byte legacy  */
 #define HORUS_BINARY_NUM_PAYLOAD_BYTES  22    /* fixed number of bytes in legacy payload     */
 #define HORUS_MIN_PAYLOAD_BYTES         16    /* compact binary payload                      */
-#define HORUS_MAX_PAYLOAD_BYTES         32    /* extended binary payload                     */
-#define HORUS_LDPC_NUM_BITS            768    /* Maximum LDPC Telemetry data (32 * 3 * 8)    */
+#define HORUS_MAX_PAYLOAD_BYTES         32    /* extended binary payload - not implemented   */
+#define HORUS_LDPC_NUM_BITS            384    /* Maximum LDPC Telemetry data (16 * 3 * 8)    */
 #define RTTY_MAX_CHARS			80    /* may not be enough, but more adds latency    */
 #define HORUS_BINARY_SAMPLERATE      48000    /* Should not want to change this              */
 #define HORUS_BINARY_SYMBOLRATE        100
@@ -568,10 +568,10 @@ void horus_get_modem_stats(struct horus *hstates, int *sync, float *snr_est) {
 
     *sync = 0;
     
-    /* SNR scaled from Eb/No est returned by FSK to SNR in 3000 Hz */
+    /* SNR scaled from Eb/No est returned by FSK to SNR in each symbol bandwidth*/
 
     fsk_get_demod_stats(hstates->fsk, &stats);
-    *snr_est = stats.snr_est + 10*log10((float)hstates->Rs*log2(hstates->mFSK)/3000);
+    *snr_est = stats.snr_est;
 }
 
 void horus_get_modem_extended_stats (struct horus *hstates, struct MODEM_STATS *stats) {
@@ -583,7 +583,7 @@ void horus_get_modem_extended_stats (struct horus *hstates, struct MODEM_STATS *
     if (hstates->verbose) {
         fprintf(stderr, "  horus_get_modem_extended_stats stats->snr_est: %f\n", stats->snr_est);
     }
-    stats->snr_est = stats->snr_est + 10*log10((float)hstates->Rs*log2(hstates->mFSK)/3000);
+    // stats->snr_est = stats->snr_est;
 
     assert(hstates->mFSK <= MODEM_STATS_MAX_F_EST);
     for (i=0; i<hstates->mFSK; i++) {

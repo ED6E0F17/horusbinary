@@ -62,6 +62,8 @@ void encode(struct LDPC *ldpc, const uint8_t ibits[], unsigned char pbits[]) {
 
 		for ( i = 0; i < ldpc->max_row_weight; i++ ) {
 			ind = H_rows[p + i * ldpc->NumberParityBits];
+            if (!ind)
+                    continue;
 			par = par + ibits[ind - 1];
 		}
 
