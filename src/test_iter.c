@@ -217,7 +217,12 @@ int main(int argc, char **argv) {
 		unsigned int shift, j;
 
 		for(j = 0; j < MAX_ROW_WEIGHT; j++) {
-			uint16_t tmp  = H_rows[ j * NUMBERPARITYBITS  + i ] - 1;
+			uint16_t offset = j * NUMBERPARITYBITS  + i; 
+			uint16_t tmp;
+
+			if (!H_rows[offset])
+					continue;
+			tmp = H_rows[ offset ] - 1;
 
 			shift = 7 - (tmp & 7); // MSB
 			last ^= input[tmp >> 3] >> shift;
