@@ -293,7 +293,7 @@ void LogConfigFile(void) {
 
 	char *modestring = "Horus Binary";
 	if (Config.Mode == 1)
-		modestring = "Horus 25Hz";
+		modestring = "Loki 500Hz";
 	else if (Config.Mode == 2)
 		modestring = "RTTY100 7N2";
 	else if (Config.Mode == 3)

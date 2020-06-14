@@ -27,7 +27,7 @@ Packets are then transmitted using **4FSK modulation**, at **100 baud**.
 A worked example for generating and encoding these packets is available in the [RS41HUP](https://github.com/darksidelemm/RS41HUP/blob/master/main.c#L401) repository.
 
 ### LDPC Horus Binary Packets
-Reduced Packets of 14 bytes are possible, for testing.
+Reduced Packets of 16 bytes are possible, for testing.
 
 ## Hardware Requirements
 The MFSK modes are narrow bandwidth, and can be received using a regular single-sideband (SSB) radio receiver. This could be a 'traditional' receiver (like a Icom IC-7000, Yaesu FT-817 to name but a few), or a software-defined radio receiver. The point is we need to receive the on-air signal (we usually transmit on 70cm) with an Upper-Sideband (USB) demodulator, and then get that audio into your computer.

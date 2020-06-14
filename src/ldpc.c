@@ -174,7 +174,8 @@ void horus_ldpc_decode(uint8_t *payload, float *sd) {
 
 	/* reverse whitening and re-order bits */
 	unscramble(llr, temp);
-	deinterleave(temp, llr);
+
+	// deinterleave(temp, llr);			/* Interleave disabled */
 
 	/* correct errors */
 	ldpc.max_iter = MAX_ITER;

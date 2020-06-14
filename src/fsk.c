@@ -255,7 +255,13 @@ struct FSK * fsk_create( int Fs, int Rs,int M, int tx_f1, int tx_fs ) {
 		return NULL;
 	}
 
-	Ndft = 4096;
+	/* We need an FFT resolution that is about 1/3 of the symbol width
+	 * 100Hz = 2K FFT, for 23 Hz resolution
+	 * 300Hz = 512 FFT, for 90 Hz resolution
+	 * 500Hz = 512 FFT  for 90 Hz resolution
+	 */
+	for (i = 6; (1<<i) < (6 * Fs/Rs); i++)
+	       Ndft = 1 << i;
 
 	/* Set constant config parameters */
 	fsk->Fs = Fs;
@@ -263,7 +269,7 @@ struct FSK * fsk_create( int Fs, int Rs,int M, int tx_f1, int tx_fs ) {
 	fsk->Ts = Fs / Rs;
 	fsk->burst_mode = 0;
 	fsk->P = horus_P;
-	fsk->Nsym = FSK_DEFAULT_NSYM;
+	fsk->Nsym = Rs / 4;
 	fsk->N = fsk->Nsym * fsk->Ts;
 	fsk->Ndft = Ndft;
 	fsk->Nmem = fsk->N + ( 2 * fsk->Ts );
@@ -581,7 +587,7 @@ void fsk_demod_freq_est( struct FSK *fsk, COMP fsk_in[],float *freqs,int M ) {
 	int fft_loops = nin / Ndft + 1; // rounded up
 
 
-	// Default Nin is about half a second, or 6 loops of 48kHz / 4096 FFT
+	// Default Nin is a quarter second, or 12k samples
 	for ( j = 0; j < fft_loops; j++ ) {
 
 		samps = nin - j * Ndft;
@@ -612,15 +618,16 @@ void fsk_demod_freq_est( struct FSK *fsk, COMP fsk_in[],float *freqs,int M ) {
 		* value, so this only has to be done once. Since we're only comparing
 		* these values and only need the mag of 2 points, we don't need to do
 		* a sqrt to each value */
-		for ( i = 0; i < Ndft / 2; i++ ) {
-			fftout[i].r = ( fftout[i].r * fftout[i].r ) + ( fftout[i].i * fftout[i].i ) ;
-		}
-
-		/* Zero out the minimum and maximum ends */
+			/* Zero out the minimum and maximum ends */
 		for ( i = 0; i < f_min; i++ ) {
 			fftout[i].r = 0;
 		}
-		for ( i = f_max - 1; i < Ndft / 2; i++ ) {
+
+		for ( ; i < f_max; i++ ) {
+			fftout[i].r = ( fftout[i].r * fftout[i].r ) + ( fftout[i].i * fftout[i].i ) ;
+		}
+
+		for ( ; i < Ndft / 2; i++ ) {
 			fftout[i].r = 0;
 		}
 		/* Mix back in with the previous fft block */

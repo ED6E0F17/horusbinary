@@ -33,11 +33,8 @@
 #include "kiss_fftr.h"
 #include "modem_stats.h"
 
-#define FSK_DEFAULT_NSYM 30
-
 #define MODE_2FSK 2
 #define MODE_4FSK 4
-
 #define MODE_M_MAX 4
 
 #define FSK_SCALE 16383

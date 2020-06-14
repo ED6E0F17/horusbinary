@@ -5,8 +5,8 @@ Latitude=52.0
 Longitude=0.0
 Altitude=0
 
-# Modes: 0=Binary, 1=25Hz, 2=RTTY_100, 3=RTTY_300
-Mode=0
+# Modes: 0=Binary, 1=Loki, 2=RTTY_100, 3=RTTY_300
+Mode=1
 
 # legacy Payload list
 ID0=4FSKTEST
