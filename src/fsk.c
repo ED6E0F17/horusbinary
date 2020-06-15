@@ -505,7 +505,10 @@ void comb_filter(struct FSK *fsk, int *freqi, kiss_fft_cpx *fftout) {
 	float peak, max;
 
 	Ndft = fsk->Ndft;
-	step = 540 * Ndft / fsk->Fs; // 540/(48000/4096) => 46.1
+	if (fsk->mode == 2)
+		step = 800 * Ndft / fsk->Fs; // 800/(48000/512) => 8
+	else
+		step = 540 * Ndft / fsk->Fs; // 540/(48000/2048) => 92
 
 	max = 0;
 	centre = step;
@@ -518,6 +521,8 @@ void comb_filter(struct FSK *fsk, int *freqi, kiss_fft_cpx *fftout) {
 			centre = j + (step + 1)/ 2;
 		}
 	}
+	if (fsk->mode == 2)
+		return;
 
 	// Three options, RS41 left or right, or RFM9x between
 	peak = add4bins(fftout, centre, centre - step);
@@ -640,7 +645,7 @@ void fsk_demod_freq_est( struct FSK *fsk, COMP fsk_in[],float *freqs,int M ) {
 
 	modem_probe_samp_f( "t_fft_est",fsk->fft_est,Ndft / 2 );
 
-	if ( M == 4) {
+	if ( (fsk->mode == 2) || (fsk->mode == 4) ) {
 		comb_filter(fsk, freqi, fftout);
 
 	/* Find the M frequency peaks here */
@@ -696,7 +701,7 @@ cannot_fail:
 
 void fsk2_demod( struct FSK *fsk, uint8_t rx_bits[], float rx_sd[], COMP fsk_in[] ) {
 	int Ts = fsk->Ts;
-	int Rs = fsk->Rs;
+	// int Rs = fsk->Rs;
 	int Fs = fsk->Fs;
 	int nsym = fsk->Nsym;
 	int nin = fsk->nin;
@@ -734,9 +739,9 @@ void fsk2_demod( struct FSK *fsk, uint8_t rx_bits[], float rx_sd[], COMP fsk_in[
 	//    fprintf(stderr,"%f,j%f,",fsk_in[jj].real,fsk_in[jj].imag);
 	//}
 
-	/* Load up demod phases from struct */
+	/* Reset up demod phases */
 	for ( m = 0; m < M; m++ )
-		phi_c[m] = fsk->phi_c[m];
+		phi_c[m] = comp_exp_j( 0 ); //fsk->phi_c[m];
 
 	/* Estimate tone frequencies */
 	fsk_demod_freq_est( fsk,fsk_in,f_est,M );
@@ -772,18 +777,15 @@ void fsk2_demod( struct FSK *fsk, uint8_t rx_bits[], float rx_sd[], COMP fsk_in[
 	/* Initalize downmixers for each symbol tone */
 	for ( m = 0; m < M; m++ ) {
 		/* Back the stored phase off to account for re-integraton of old samples */
-		dphi[m] = comp_exp_j( -2 * ( Nmem - nin - ( Ts / P ) ) * M_PI * ( ( fsk->f_est[m] ) / (float)( Fs ) ) );
-		phi_c[m] = cmult( dphi[m],phi_c[m] );
-		//fprintf(stderr,"F%d = %f",m,fsk->f_est[m]);
+		phi_c[m] = comp_exp_j( -2 * M_PI * fsk->f_est[m] / (float)( Fs ) );
 
 		/* Figure out how much to nudge each sample downmixer for every sample */
-		dphi[m] = comp_exp_j( 2 * M_PI * ( ( fsk->f_est[m] ) / (float)( Fs ) ) );
+		dphi[m] = comp_exp_j( 2 * M_PI * fsk->f_est[m] / (float)( Fs ) );
 	}
 
 	/* Integrate and downsample for symbol tones */
 	for ( m = 0; m < M; m++ ) {
 		/* Copy buffer pointers in to avoid second buffer indirection */
-		float f_est_m = f_est[m];
 		COMP* f_int_m = &( f_int[m][0] );
 		COMP dphi_m = dphi[m];
 
@@ -793,19 +795,14 @@ void fsk2_demod( struct FSK *fsk, uint8_t rx_bits[], float rx_sd[], COMP fsk_in[
 		using_old_samps = 1;
 
 		/* Pre-fill integration buffer */
-		for ( dc_i = 0; dc_i < Ts - ( Ts / P ); dc_i++ ) {
+		for ( i=0, dc_i = 0; i < Ts - ( Ts / P ); dc_i++, i++ ) {
 			/* Switch sample source to new samples when we run out of old ones */
 			if ( dc_i >= nold && using_old_samps ) {
 				sample_src = &fsk_in[0];
-				dc_i = 0;
-				using_old_samps = 0;
-
-				/* Recalculate delta-phi after switching to new sample source */
-				comp_normalize( phi_c[m] );
-				dphi_m = comp_exp_j( 2 * M_PI * ( ( f_est_m ) / (float)( Fs ) ) );
+				dc_i = using_old_samps = 0;
 			}
 			/* Downconvert and place into integration buffer */
-			f_intbuf_m[dc_i] = cmult( sample_src[dc_i],cconj( phi_c[m] ) );
+			f_intbuf_m[i] = cmult( sample_src[dc_i],cconj( phi_c[m] ) );
 
 			#ifdef MODEMPROBE_ENABLE
 			snprintf( mp_name_tmp,19,"t_f%zd_dc",m + 1 );
@@ -817,18 +814,13 @@ void fsk2_demod( struct FSK *fsk, uint8_t rx_bits[], float rx_sd[], COMP fsk_in[
 		cbuf_i = dc_i;
 
 		/* Integrate over Ts at offsets of Ts/P */
-		for ( i = 0; i < ( nsym + 1 ) * P; i++ ) {
+		for ( i = 0; i < (nsym + 1) * P; i++ ) {
 			/* Downconvert and Place Ts/P samples in the integration buffers */
 			for ( j = 0; j < ( Ts / P ); j++,dc_i++ ) {
 				/* Switch sample source to new samples when we run out of old ones */
 				if ( dc_i >= nold && using_old_samps ) {
 					sample_src = &fsk_in[0];
-					dc_i = 0;
-					using_old_samps = 0;
-
-					/* Recalculate delta-phi after switching to new sample source */
-					comp_normalize( phi_c[m] );
-					dphi_m = comp_exp_j( 2 * M_PI * ( ( f_est_m ) / (float)( Fs ) ) );
+					dc_i = using_old_samps = 0;
 				}
 				/* Downconvert and place into integration buffer */
 				f_intbuf_m[cbuf_i + j] = cmult( sample_src[dc_i],cconj( phi_c[m] ) );
@@ -874,7 +866,7 @@ void fsk2_demod( struct FSK *fsk, uint8_t rx_bits[], float rx_sd[], COMP fsk_in[
 	 * extract angle */
 
 	/* Figure out how much to spin the oscillator to extract magic spectral line */
-	dphift = comp_exp_j( 2 * M_PI * ( (float)( Rs ) / (float)( P * Rs ) ) );
+	dphift = comp_exp_j( 2.0 * M_PI / (float)( P ));
 	phi_ft.real = 1;
 	phi_ft.imag = 0;
 	t_c = comp0();
@@ -892,15 +884,10 @@ void fsk2_demod( struct FSK *fsk, uint8_t rx_bits[], float rx_sd[], COMP fsk_in[
 		phi_ft = cmult( phi_ft,dphift );
 	}
 
-	/* Check for NaNs in the fine timing estimate, return if found */
-	/* otherwise segfaults happen */
-	if ( isnan( t_c.real ) || isnan( t_c.imag ) ) {
-		return;
-	}
 
 	/* Get the magic angle */
 	norm_rx_timing =  atan2f( t_c.imag,t_c.real ) / ( 2 * M_PI );
-	rx_timing = norm_rx_timing * (float)P;
+	rx_timing = norm_rx_timing * (float)P; // +/- P/2
 
 	old_norm_rx_timing = fsk->norm_rx_timing;
 	fsk->norm_rx_timing = norm_rx_timing;
@@ -919,9 +906,9 @@ void fsk2_demod( struct FSK *fsk, uint8_t rx_bits[], float rx_sd[], COMP fsk_in[
 	if ( !fsk->burst_mode ) {
 		/* Used to define HORUS_BINARY_MAX_NIN, change with caution */
 		if ( norm_rx_timing > 0.25 ) {
-			fsk->nin = fsk->N + Ts / 2;
+			fsk->nin = fsk->N + Ts / 4;
 		} else if ( norm_rx_timing < -0.25 ) {
-			fsk->nin = fsk->N - Ts / 2;
+			fsk->nin = fsk->N - Ts / 4;
 		} else {
 			fsk->nin = fsk->N;
 		}
@@ -1065,9 +1052,6 @@ void fsk2_demod( struct FSK *fsk, uint8_t rx_bits[], float rx_sd[], COMP fsk_in[
 	assert( neyesamp <= MODEM_STATS_EYE_IND_MAX );
 	fsk->stats->neyesamp = neyesamp;
 
-	#ifdef I_DONT_UNDERSTAND
-	neyeoffset = high_sample + 1 + ( P * 28 ); /* WTF this line? Where does "28" come from ?                           */
-	#endif                             /* ifdef-ed out as I am afraid it will index out of memory as P changes */
 	neyeoffset = high_sample + 1;
 
 	int eye_traces = MODEM_STATS_ET_MAX / M;
@@ -1142,6 +1126,7 @@ void fsk_demod_sd( struct FSK *fsk, float rx_sd[], COMP fsk_in[] ) {
 	fsk2_demod( fsk,NULL,rx_sd,fsk_in );
 }
 
+#if 0
 void fsk_mod( struct FSK *fsk,float fsk_out[],uint8_t tx_bits[] ) {
 	COMP tx_phase_c = fsk->tx_phase_c; /* Current complex TX phase */
 	int f1_tx = fsk->f1_tx;         /* '0' frequency */
@@ -1268,7 +1253,7 @@ void fsk_mod_ext_vco( struct FSK *fsk, float vco_out[], uint8_t tx_bits[] ) {
 		}
 	}
 }
-
+#endif
 void fsk_stats_normalise_eye( struct FSK *fsk, int normalise_enable ) {
 	fsk->normalise_eye = normalise_enable;
 }

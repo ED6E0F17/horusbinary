@@ -605,7 +605,7 @@ int main( int argc, char **argv ) {
 		ChannelPrintf(  12, 1, "%s  ", Config.Waterfall );
 		ChannelRefresh();	// redraw ncurses display
 		curlPush();		// Upload now
-		usleep( 200 * 1000 );	// short delay in case reading from file
+		usleep( 100 * 1000 );	// short delay in case reading from file
 	}
 
 	LogMessage("Shutting down.\n");

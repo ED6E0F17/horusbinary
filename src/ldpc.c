@@ -26,7 +26,7 @@
 /* Scramble and interleave are 8bit lsb, but bitstream is sent msb */
 #define LSB2MSB(X) (X + 7 - 2 * (X & 7) )
 
-/* Invert bits - ldpc expects negative floats for high hits */
+/* Invert bits for 4fsk: soft bits are inverted compared to 2fsk */
 void unscramble(float *in, float* out) {
 	int i, ibit;
 	uint16_t scrambler = 0x4a80;  /* init additive scrambler at start of every frame */
@@ -38,9 +38,9 @@ void unscramble(float *in, float* out) {
 		/* modify i-th bit by xor-ing with scrambler output sequence */
 		ibit = LSB2MSB(i);
 		if ( scrambler_out ) {
-			out[ibit] = in[ibit];
-		} else {
 			out[ibit] = -in[ibit];
+		} else {
+			out[ibit] = in[ibit];
 		}
 
 		scrambler >>= 1;
@@ -92,7 +92,7 @@ void ldpc_errors( const uint8_t *outbytes, uint8_t *rx_bytes ) {
 	memcpy(temp, rx_bytes, length);
 
 	scramble(temp, length); // use scrambler from Golay code
-	bitwise_deinterleave(temp, length);
+	// bitwise_deinterleave(temp, length);
 
 	// count bits changed during error correction
 	for(i = 0; i < BITS_PER_PACKET; i++) {

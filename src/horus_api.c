@@ -35,7 +35,7 @@
 #include "fsk.h"
 #include "horus_l2.h"
 
-#define MAX_UW_LENGTH                 (4*8)   /* With high FEC, (2^N) >> (N^BER)/BER! * BAUD */
+#define MAX_UW_LENGTH                 (5*8)   /* With high FEC, (2^N) >> (N^BER)/BER! * BAUD */
 #define HORUS_API_VERSION                1    /* unique number that is bumped if API changes */
 #define HORUS_BINARY_NUM_BITS          344    /*  22 * 23/12 => 43 byte packet               */
 #define HORUS_BINARY_NUM_PAYLOAD_BYTES  22    /* fixed number of bytes in legacy payload     */
@@ -100,6 +100,7 @@ int8_t uw_horus_v1[] = {
  *  - only uses 2 symbols, so it should be easier to find on a waterfall */
 
 int8_t uw_horus_v2[] = {
+    0, 1, 0, 1, 0, 1, 0, 1,  // 0x55
     1, 0, 0, 1, 0, 1, 1, 0,  // 0x96
     0, 1, 1, 0, 1, 0, 0, 1,  // 0x69
     0, 1, 1, 0, 1, 0, 0, 1,  // 0x69
@@ -155,7 +156,7 @@ struct horus *horus_open (int mode) {
 	for (i=0; i<sizeof(uw_horus_v2); i++)
 		hstates->uw[i] = 2*uw_horus_v2[i] - 1;
         hstates->uw_len = sizeof(uw_horus_v2);
-        hstates->uw_thresh = sizeof(uw_horus_v2) - 5*2; /* allow 5 bit errors in UW detection */
+        hstates->uw_thresh = sizeof(uw_horus_v2) - 6*2; /* allow 6 bit errors in 40 ( 15% ) */
     }
 
     hstates->rx_bits_len = hstates->max_packet_len;
@@ -372,7 +373,7 @@ int extract_horus_binary(struct horus *hstates, char hex_out[], int uw_loc) {
 	payload_size = HORUS_MIN_PAYLOAD_BYTES; 
         float *softbits = hstates->soft_bits + uw_loc + sizeof(uw_horus_v2);
 	horus_ldpc_decode( payload_bytes, softbits );
-	ldpc_errors( payload_bytes, &rxpacket[4] );
+	ldpc_errors( payload_bytes, &rxpacket[ sizeof(uw_horus_v2) / 8 ] );
     }
 
 	/* calculate checksum */
