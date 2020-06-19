@@ -89,6 +89,14 @@ static float cabsolute(COMP a)
     return sqrtf((a.real * a.real) + (a.imag * a.imag) );
 }
 
+#define ABS_DIFF(a,b) (a>b)?(a-b):(b-a);
+static inline float fmag_diff(COMP a, COMP b)
+{
+	float mag1 = (a.real * a.real) + (a.imag * a.imag); //cabsolute(a);
+	float mag2 = (b.real * b.real) + (b.imag * b.imag); //cabsolute(b);
+	return ABS_DIFF(mag1, mag2);
+}
+
 /*
  * Euler's formula in a new convenient function
  */

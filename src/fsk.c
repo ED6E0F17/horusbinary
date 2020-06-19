@@ -506,7 +506,7 @@ void comb_filter(struct FSK *fsk, int *freqi, kiss_fft_cpx *fftout) {
 
 	Ndft = fsk->Ndft;
 	if (fsk->mode == 2)
-		step = 800 * Ndft / fsk->Fs; // 800/(48000/512) => 8
+		step = 850 * Ndft / fsk->Fs; // 850/(48000/512) => 9
 	else
 		step = 540 * Ndft / fsk->Fs; // 540/(48000/2048) => 92
 
@@ -706,10 +706,8 @@ void fsk2_demod( struct FSK *fsk, uint8_t rx_bits[], float rx_sd[], COMP fsk_in[
 	int nsym = fsk->Nsym;
 	int nin = fsk->nin;
 	int P = fsk->P;
-	int Nmem = fsk->Nmem;
 	int M = fsk->mode;
 	size_t i,j,m,dc_i,cbuf_i;
-	float ft1;
 	int nstash = fsk->nstash;
 
 	COMP* f_int[M];     /* Filtered and downsampled symbol tones */
@@ -717,7 +715,7 @@ void fsk2_demod( struct FSK *fsk, uint8_t rx_bits[], float rx_sd[], COMP fsk_in[
 	COMP t_c;           /* another complex temp */
 	COMP phi_c[M];
 	COMP phi_ft;
-	int nold = Nmem - nin;
+	int nold = fsk->Nmem - nin; /* 2 symbols extra at start, + jitter */
 
 	COMP dphi[M];
 	COMP dphift;
@@ -787,43 +785,42 @@ void fsk2_demod( struct FSK *fsk, uint8_t rx_bits[], float rx_sd[], COMP fsk_in[
 	for ( m = 0; m < M; m++ ) {
 		/* Copy buffer pointers in to avoid second buffer indirection */
 		COMP* f_int_m = &( f_int[m][0] );
-		COMP dphi_m = dphi[m];
+		COMP dphi_m = cconj( dphi[m] );
 
-		dc_i = 0;
+		dc_i = nstash - nold;
 		cbuf_i = 0;
-		sample_src = &( fsk->samp_old[nstash - nold] );
+		sample_src = fsk->samp_old;
 		using_old_samps = 1;
 
 		/* Pre-fill integration buffer */
-		for ( i=0, dc_i = 0; i < Ts - ( Ts / P ); dc_i++, i++ ) {
-			/* Switch sample source to new samples when we run out of old ones */
-			if ( dc_i >= nold && using_old_samps ) {
-				sample_src = &fsk_in[0];
+		for ( i=0; i < Ts; dc_i++, i++ ) {
+			/* Should not run out of samples here */
+			if ( dc_i >= nstash && using_old_samps ) {
+				sample_src = fsk_in;
 				dc_i = using_old_samps = 0;
 			}
 			/* Downconvert and place into integration buffer */
-			f_intbuf_m[i] = cmult( sample_src[dc_i],cconj( phi_c[m] ) );
+			f_intbuf_m[i] = cmult( sample_src[dc_i],phi_c[m] );
 
 			#ifdef MODEMPROBE_ENABLE
 			snprintf( mp_name_tmp,19,"t_f%zd_dc",m + 1 );
-			modem_probe_samp_c( mp_name_tmp,&f_intbuf_m[dc_i],1 );
+			modem_probe_samp_c( mp_name_tmp,&f_intbuf_m[i],1 );
 			#endif
 			/* Spin downconversion phases */
 			phi_c[m] = cmult( phi_c[m],dphi_m );
 		}
-		cbuf_i = dc_i;
 
 		/* Integrate over Ts at offsets of Ts/P */
 		for ( i = 0; i < (nsym + 1) * P; i++ ) {
 			/* Downconvert and Place Ts/P samples in the integration buffers */
 			for ( j = 0; j < ( Ts / P ); j++,dc_i++ ) {
 				/* Switch sample source to new samples when we run out of old ones */
-				if ( dc_i >= nold && using_old_samps ) {
-					sample_src = &fsk_in[0];
+				if ( dc_i >= nstash && using_old_samps ) {
+					sample_src = fsk_in;
 					dc_i = using_old_samps = 0;
 				}
 				/* Downconvert and place into integration buffer */
-				f_intbuf_m[cbuf_i + j] = cmult( sample_src[dc_i],cconj( phi_c[m] ) );
+				f_intbuf_m[cbuf_i + j] = cmult( sample_src[dc_i],phi_c[m] );
 
 				#ifdef MODEMPROBE_ENABLE
 				snprintf( mp_name_tmp,19,"t_f%zd_dc",m + 1 );
@@ -835,9 +832,10 @@ void fsk2_demod( struct FSK *fsk, uint8_t rx_bits[], float rx_sd[], COMP fsk_in[
 			}
 
 			/* Dump internal samples */
-			cbuf_i += Ts / P;
+			cbuf_i += j;
 			if ( cbuf_i >= Ts ) {
 				cbuf_i = 0;
+				comp_normalize(phi_c[m]);
 			}
 
 			/* Integrate over the integration buffers, save samples */
@@ -858,9 +856,6 @@ void fsk2_demod( struct FSK *fsk, uint8_t rx_bits[], float rx_sd[], COMP fsk_in[
 		fsk->f_est[m] = f_est[m];
 	}
 
-	/* Stash samples away in the old sample buffer for the next round of bit getting */
-	memcpy( (void*)&( fsk->samp_old[0] ),(void*)&( fsk_in[nin - nstash] ),sizeof( COMP ) * nstash );
-
 	/* Fine Timing Estimation */
 	/* Apply magic nonlinearity to f1_int and f2_int, shift down to 0,
 	 * extract angle */
@@ -871,22 +866,29 @@ void fsk2_demod( struct FSK *fsk, uint8_t rx_bits[], float rx_sd[], COMP fsk_in[
 	phi_ft.imag = 0;
 	t_c = comp0();
 	for ( i = 0; i < ( nsym + 1 ) * P; i++ ) {
-		/* Get abs^2 of fx_int[i], and add 'em */
-		ft1 = 0;
-		for ( m = 0; m < M; m++ ) {
-			ft1 += ( f_int[m][i].real * f_int[m][i].real ) + ( f_int[m][i].imag * f_int[m][i].imag );
+		/* Get abs^2 of fx_int[i], and diff 'em */
+		float ft, ft1, ft2;
+		if ( M == 2 ) {
+			ft = fmag_diff(f_int[1][i], f_int[0][i]);
+		} else {
+			ft1 = fmag_diff(f_int[1][i], f_int[0][i]);
+			ft2 = fmag_diff(f_int[3][i], f_int[2][i]);
+			ft = ABS_DIFF(ft1, ft2);
 		}
 
 		/* Down shift and accumulate magic line */
-		t_c = cadd( t_c,fcmult( ft1,phi_ft ) );
+		t_c = cadd( t_c,fcmult( ft, phi_ft ) );
 
 		/* Spin the oscillator for the magic line shift */
-		phi_ft = cmult( phi_ft,dphift );
+		phi_ft = cmult( phi_ft, dphift );
 	}
 
 
 	/* Get the magic angle */
 	norm_rx_timing =  atan2f( t_c.imag,t_c.real ) / ( 2 * M_PI );
+	if (isnan(norm_rx_timing))
+		norm_rx_timing = 0;
+
 	rx_timing = norm_rx_timing * (float)P; // +/- P/2
 
 	old_norm_rx_timing = fsk->norm_rx_timing;
@@ -900,20 +902,20 @@ void fsk2_demod( struct FSK *fsk, uint8_t rx_bits[], float rx_sd[], COMP fsk_in[
 		appm = 1e6 * d_norm_rx_timing / (float)nsym;
 		fsk->ppm = .9 * fsk->ppm + .1 * appm;
 	}
-#if 1
+
+	/* Buffer samples for four extra symbols, two at each end for processing and jitter */
+	memcpy( (void*)&( fsk->samp_old[0]),(void*)&( fsk_in[nin - nstash] ),sizeof( COMP ) * nstash );
+
 	/* Figure out how many samples are needed the next modem cycle */
-	/* Unless we're in burst mode */
-	if ( !fsk->burst_mode ) {
-		/* Used to define HORUS_BINARY_MAX_NIN, change with caution */
-		if ( norm_rx_timing > 0.25 ) {
-			fsk->nin = fsk->N + Ts / 4;
-		} else if ( norm_rx_timing < -0.25 ) {
-			fsk->nin = fsk->N - Ts / 4;
-		} else {
-			fsk->nin = fsk->N;
-		}
+	/* Used to define HORUS_BINARY_MAX_NIN, change with caution */
+	int offset = 0;
+	if ( norm_rx_timing > 0.2 ) {
+		offset = Ts / 4;
+	} else if ( norm_rx_timing < -0.2 ) {
+		offset = - Ts / 4;
 	}
-#endif
+	fsk->nin = fsk->N + offset;
+
 	modem_probe_samp_f( "t_norm_rx_timing",&( norm_rx_timing ),1 );
 	modem_probe_samp_i( "t_nin",&( fsk->nin ),1 );
 
@@ -996,11 +998,10 @@ void fsk2_demod( struct FSK *fsk, uint8_t rx_bits[], float rx_sd[], COMP fsk_in[
 		/* Standard deviation is calculated by algorithm devised by crafty soviets */
 		#ifdef EST_EBNO
 		/* Accumulate the square of the sampled value */
-		ft1 = max;
-		stdebno += ft1;
+		stdebno += max;
 
 		/* Figure the abs value of the max tone */
-		meanebno += sqrtf( ft1 );
+		meanebno += sqrtf( max );
 		#endif
 		/* Soft output goes here */
 	}
