@@ -47,7 +47,7 @@
 #define HORUS_BINARY_SYMBOLRATE        100
 #define HORUS_RTTY_SYMBOLRATE          100
 #define PITS_RTTY_SYMBOLRATE           300
-#define HORUS_LDPC_SYMBOLRATE          600    /* Minimum speed that an rfm98 can receive   */
+#define HORUS_LDPC_SYMBOLRATE          500    /* Minimum speed that an rfm98 can receive   */
 #define HORUS_BINARY_TS              (HORUS_BINARY_SAMPLERATE / HORUS_BINARY_SYMBOLRATE)
 #define HORUS_BINARY_NIN_MAX         (HORUS_BINARY_SAMPLERATE / 4 + HORUS_BINARY_TS * 2)
 #define HORUS_MAX_FREQUENCY           4000    /* Narrow bandpass for lower speed modes     */

@@ -518,7 +518,7 @@ void comb_filter(struct FSK *fsk, int *freqi, kiss_fft_cpx *fftout) {
 			max = peak;
 			freqi[0] = bestof2bins(fftout, j);
 			freqi[1] = bestof2bins(fftout, j + step);
-			centre = j + (step + 1)/ 2;
+			centre = j + step / 2;
 		}
 	}
 	if (fsk->mode == 2)
